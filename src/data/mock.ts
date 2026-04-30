@@ -92,6 +92,7 @@ export const visits: Visit[] = [
     estimatedNetAmount: 57.68,
     patientsCount: 4,
     generalNotes: "Llevar fresa nueva.",
+    materialNotes: "Bisturí nº15, fresas diamante, gasas, guantes, crema urea",
     patients: [
       { id: "vp1", visitId: "v1", patientId: "p1", priceCharged: 18, paymentStatus: "Pendiente", attended: false },
       { id: "vp2", visitId: "v1", patientId: "p2", priceCharged: 18, paymentStatus: "Pendiente", attended: false },
@@ -115,6 +116,7 @@ export const visits: Visit[] = [
     otherExpenses: 0,
     estimatedNetAmount: 24.55,
     patientsCount: 1,
+    materialNotes: "Kit domicilio, alicate, alcohol, fieltros descarga",
     patients: [{ id: "vp5", visitId: "v2", patientId: "p7", priceCharged: 35, paymentStatus: "Pendiente", attended: false }],
   },
   {
