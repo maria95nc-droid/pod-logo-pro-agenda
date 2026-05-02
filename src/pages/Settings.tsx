@@ -113,6 +113,81 @@ export default function Settings() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardContent className="space-y-4 p-4">
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <Mic className="h-4 w-4 text-primary" /> Voz e IA
+          </h2>
+
+          <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+            Modo por defecto: <strong className="text-foreground">Gratis</strong>. La interpretación
+            con IA solo se activa al pulsar <em>Interpretar con IA</em> y nunca de forma automática.
+            No se guardan audios.
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Permitir IA opcional</p>
+              <p className="text-xs text-muted-foreground">Habilita el botón <em>Interpretar con IA</em>.</p>
+            </div>
+            <Switch checked={voice.aiEnabled} onCheckedChange={(v) => updateVoice({ aiEnabled: v })} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="ailimit">Límite mensual de usos de IA (0 = sin límite)</Label>
+            <Input
+              id="ailimit"
+              type="number"
+              min={0}
+              value={voice.monthlyAiLimit}
+              onChange={(e) => updateVoice({ monthlyAiLimit: Math.max(0, +e.target.value || 0) })}
+            />
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <Sparkles className="h-3.5 w-3.5" /> Usos de IA este mes
+              </span>
+              <span className="font-semibold">
+                {usage.count}
+                {voice.monthlyAiLimit > 0 && (
+                  <span className="text-muted-foreground"> / {voice.monthlyAiLimit}</span>
+                )}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="silence">Auto-parar tras silencio (segundos)</Label>
+            <Input
+              id="silence"
+              type="number"
+              min={0}
+              step={0.5}
+              value={voice.silenceMs / 1000}
+              onChange={(e) => updateVoice({ silenceMs: Math.max(0, +e.target.value * 1000) })}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="maxdur">Duración máxima de escucha (segundos)</Label>
+            <Input
+              id="maxdur"
+              type="number"
+              min={5}
+              value={voice.maxDurationMs / 1000}
+              onChange={(e) => updateVoice({ maxDurationMs: Math.max(5000, +e.target.value * 1000) })}
+            />
+          </div>
+
+          <div className="flex items-start gap-2 rounded-lg border border-status-warning/30 bg-status-warning-bg/40 p-3 text-xs">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-status-warning" />
+            <p>El uso de IA puede consumir créditos. Se te pedirá confirmación cada vez.</p>
+          </div>
+        </CardContent>
+      </Card>
+
       <Button className="w-full" size="lg" onClick={() => toast.success("Configuración guardada")}>
         <Save className="h-4 w-4" /> Guardar cambios
       </Button>
