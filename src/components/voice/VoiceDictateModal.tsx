@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -6,28 +6,40 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Mic, MicOff, Loader2, Check, X, AlertCircle, Sparkles } from "lucide-react";
+import { Mic, MicOff, Loader2, Check, X, AlertCircle, Sparkles, Pencil } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { parseVoiceLocal } from "@/lib/voiceParser";
+import {
+  canUseAi,
+  incrementAiUsage,
+  loadVoiceSettings,
+} from "@/lib/voiceSettings";
 import type { VoiceIntent, VoiceInterpretation } from "@/types/voice";
 
 interface VoiceDictateModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Pista para la IA sobre qué tipo de dato esperamos por defecto */
   hintIntent?: VoiceIntent;
-  /** Título del modal */
   title?: string;
-  /** Texto de ayuda con un ejemplo de dictado */
   exampleHint?: string;
-  /** Llamado al pulsar Confirmar con los datos interpretados */
   onConfirm: (interpretation: VoiceInterpretation, transcript: string) => void;
 }
 
-type Phase = "idle" | "listening" | "interpreting" | "review" | "error";
+type Phase = "listening" | "review" | "interpreting" | "error";
 
 export function VoiceDictateModal({
   open,
@@ -37,22 +49,28 @@ export function VoiceDictateModal({
   exampleHint,
   onConfirm,
 }: VoiceDictateModalProps) {
-  const speech = useSpeechRecognition("es-ES");
-  const [phase, setPhase] = useState<Phase>("idle");
+  const settings = useRef(loadVoiceSettings());
+  const speech = useSpeechRecognition("es-ES", {
+    silenceMs: settings.current.silenceMs,
+    maxDurationMs: settings.current.maxDurationMs,
+  });
+  const [phase, setPhase] = useState<Phase>("listening");
   const [editableTranscript, setEditableTranscript] = useState("");
   const [interpretation, setInterpretation] = useState<VoiceInterpretation | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [askAi, setAskAi] = useState(false);
 
   // Reset al abrir
   useEffect(() => {
     if (open) {
+      settings.current = loadVoiceSettings();
       speech.reset();
       setEditableTranscript("");
       setInterpretation(null);
       setErrorMsg(null);
+      setAskAi(false);
       if (speech.supported) {
         setPhase("listening");
-        // pequeño delay para que el modal monte antes de pedir permiso
         setTimeout(() => speech.start(), 150);
       } else {
         setPhase("error");
@@ -66,42 +84,64 @@ export function VoiceDictateModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const handleStop = async () => {
-    speech.stop();
-    const text = (speech.transcript + " " + speech.interim).trim();
-    if (!text) {
-      setErrorMsg("No he podido escuchar nada. Inténtalo de nuevo.");
-      setPhase("error");
-      return;
-    }
+  // Cuando para de escuchar, pasar automáticamente a revisión local (sin IA)
+  useEffect(() => {
+    if (phase !== "listening") return;
+    if (speech.isListening) return;
+    // Solo si ya hay transcripción final
+    const text = speech.transcript.trim();
+    if (!text) return;
     setEditableTranscript(text);
-    setPhase("interpreting");
-    try {
-      const { data, error } = await supabase.functions.invoke("interpret-voice", {
-        body: { transcript: text, hintIntent },
-      });
-      if (error) throw error;
-      if (!data?.data) throw new Error("No he podido interpretar el dictado.");
-      setInterpretation(data.data as VoiceInterpretation);
-      setPhase("review");
-    } catch (e) {
-      console.error(e);
-      const msg = e instanceof Error ? e.message : "Error al interpretar";
-      setErrorMsg(msg);
-      setPhase("error");
-    }
+    setInterpretation(parseVoiceLocal(text));
+    setPhase("review");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speech.isListening, speech.transcript]);
+
+  const handleStop = () => speech.stop();
+
+  const handleManualText = () => {
+    // Si el usuario decide pasar a revisión sin haber dictado nada
+    speech.stop();
+    setEditableTranscript("");
+    setInterpretation({ intent: "desconocido", confidence: 0 });
+    setPhase("review");
   };
 
-  const handleReinterpret = async () => {
-    if (!editableTranscript.trim()) return;
+  const handleReparseLocal = () => {
+    if (!editableTranscript.trim()) {
+      toast.message("Escribe o dicta algo primero.");
+      return;
+    }
+    setInterpretation(parseVoiceLocal(editableTranscript));
+    toast.success("Re-detectado con reglas locales");
+  };
+
+  const requestAi = () => {
+    if (!editableTranscript.trim()) {
+      toast.message("No hay texto que interpretar.");
+      return;
+    }
+    const check = canUseAi(settings.current);
+    if (!check.ok) {
+      toast.error(check.reason ?? "IA no disponible");
+      return;
+    }
+    setAskAi(true);
+  };
+
+  const runAi = async () => {
+    setAskAi(false);
     setPhase("interpreting");
     try {
       const { data, error } = await supabase.functions.invoke("interpret-voice", {
         body: { transcript: editableTranscript, hintIntent },
       });
       if (error) throw error;
+      if (!data?.data) throw new Error("No he podido interpretar el dictado.");
+      incrementAiUsage();
       setInterpretation(data.data as VoiceInterpretation);
       setPhase("review");
+      toast.success("Interpretado con IA");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error al interpretar";
       toast.error(msg);
@@ -115,107 +155,154 @@ export function VoiceDictateModal({
     onOpenChange(false);
   };
 
+  const liveText = (speech.transcript + (speech.interim ? " " + speech.interim : "")).trim();
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md gap-3 p-0 overflow-hidden">
-        <DialogHeader className="space-y-1 px-5 pt-5">
-          <DialogTitle className="flex items-center gap-2 text-lg">
-            <Sparkles className="h-4 w-4 text-primary" />
-            {title}
-          </DialogTitle>
-          <DialogDescription className="text-xs">
-            {exampleHint ?? "Habla con naturalidad. La IA entenderá los datos."}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-md gap-3 p-0 overflow-hidden">
+          <DialogHeader className="space-y-1 px-5 pt-5">
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Mic className="h-4 w-4 text-primary" />
+              {title}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {exampleHint ?? "Habla con naturalidad. Modo gratis sin IA por defecto."}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-4 px-5 pb-5">
-          {/* FASE: ESCUCHANDO */}
-          {phase === "listening" && (
-            <div className="space-y-3">
-              <div className="flex flex-col items-center justify-center rounded-xl bg-primary-soft py-6">
-                <div className="relative">
-                  <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
-                  <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-primary">
-                    <Mic className="h-7 w-7" />
+          <div className="space-y-4 px-5 pb-5">
+            {/* FASE: ESCUCHANDO */}
+            {phase === "listening" && (
+              <div className="space-y-3">
+                <div className="flex flex-col items-center justify-center rounded-xl bg-primary-soft py-6">
+                  <div className="relative">
+                    {speech.isListening && (
+                      <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
+                    )}
+                    <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-primary">
+                      <Mic className="h-7 w-7" />
+                    </div>
                   </div>
+                  <p className="mt-3 text-sm font-medium text-primary">
+                    {speech.isListening ? "Escuchando…" : "Preparado"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Para sola tras 2s de silencio · máx. 20s
+                  </p>
                 </div>
-                <p className="mt-3 text-sm font-medium text-primary">Escuchando…</p>
+                <div className="min-h-[72px] rounded-lg border border-border bg-muted/40 p-3 text-sm">
+                  {liveText ? (
+                    <p className="text-foreground">{liveText}</p>
+                  ) : (
+                    <p className="text-muted-foreground">Empieza a hablar…</p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+                    <X className="h-4 w-4" /> Cancelar
+                  </Button>
+                  {speech.isListening ? (
+                    <Button className="flex-1" onClick={handleStop}>
+                      <MicOff className="h-4 w-4" /> Parar
+                    </Button>
+                  ) : (
+                    <Button className="flex-1" onClick={handleManualText}>
+                      <Pencil className="h-4 w-4" /> Escribir
+                    </Button>
+                  )}
+                </div>
               </div>
-              <div className="min-h-[60px] rounded-lg border border-border bg-muted/40 p-3 text-sm">
-                <p className="text-foreground">{speech.transcript}</p>
-                <p className="text-muted-foreground italic">{speech.interim}</p>
-                {!speech.transcript && !speech.interim && (
-                  <p className="text-muted-foreground">Empieza a hablar…</p>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
-                  <X className="h-4 w-4" /> Cancelar
-                </Button>
-                <Button className="flex-1" onClick={handleStop}>
-                  <MicOff className="h-4 w-4" /> Parar
-                </Button>
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* FASE: INTERPRETANDO */}
-          {phase === "interpreting" && (
-            <div className="flex flex-col items-center justify-center gap-3 py-10">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Interpretando lo que has dicho…</p>
-            </div>
-          )}
+            {/* FASE: INTERPRETANDO (IA) */}
+            {phase === "interpreting" && (
+              <div className="flex flex-col items-center justify-center gap-3 py-10">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Interpretando con IA…</p>
+              </div>
+            )}
 
-          {/* FASE: REVISIÓN */}
-          {phase === "review" && interpretation && (
-            <div className="space-y-3">
-              <div>
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Texto detectado
-                </p>
-                <Textarea
-                  value={editableTranscript}
-                  onChange={(e) => setEditableTranscript(e.target.value)}
-                  rows={3}
-                  className="text-sm"
-                />
-              </div>
-              <div>
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Datos interpretados ({interpretation.intent})
-                </p>
-                <InterpretedFields interpretation={interpretation} />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-                  <X className="h-4 w-4" /> Cancelar
-                </Button>
-                <Button variant="secondary" size="sm" onClick={handleReinterpret}>
-                  Reinterpretar
-                </Button>
-                <Button size="sm" onClick={handleConfirm}>
-                  <Check className="h-4 w-4" /> Confirmar
-                </Button>
-              </div>
-            </div>
-          )}
+            {/* FASE: REVISIÓN */}
+            {phase === "review" && interpretation && (
+              <div className="space-y-3">
+                <div>
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Texto detectado (editable)
+                  </p>
+                  <Textarea
+                    value={editableTranscript}
+                    onChange={(e) => setEditableTranscript(e.target.value)}
+                    rows={3}
+                    className="text-sm"
+                    placeholder="Escribe o corrige el texto…"
+                  />
+                </div>
+                <div>
+                  <p className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span>Datos detectados ({interpretation.intent})</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] normal-case tracking-normal">
+                      modo gratis
+                    </span>
+                  </p>
+                  <InterpretedFields interpretation={interpretation} />
+                </div>
 
-          {/* FASE: ERROR */}
-          {phase === "error" && (
-            <div className="space-y-3">
-              <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-status-cancelled-bg p-3 text-sm">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                <p>{errorMsg}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" size="sm" onClick={handleReparseLocal}>
+                    Re-detectar
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={requestAi}
+                    className="border border-primary/20"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" /> Interpretar con IA
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+                    <X className="h-4 w-4" /> Cancelar
+                  </Button>
+                  <Button size="sm" onClick={handleConfirm}>
+                    <Check className="h-4 w-4" /> Confirmar
+                  </Button>
+                </div>
               </div>
-              <Button className="w-full" variant="outline" onClick={() => onOpenChange(false)}>
-                Cerrar
-              </Button>
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+            )}
+
+            {/* FASE: ERROR */}
+            {phase === "error" && (
+              <div className="space-y-3">
+                <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-status-cancelled-bg p-3 text-sm">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <p>{errorMsg}</p>
+                </div>
+                <Button className="w-full" variant="outline" onClick={() => onOpenChange(false)}>
+                  Cerrar
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={askAi} onOpenChange={setAskAi}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Interpretar con IA</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción puede consumir créditos de IA. ¿Quieres continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={runAi}>Sí, usar IA</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -234,7 +321,7 @@ function InterpretedFields({ interpretation }: { interpretation: VoiceInterpreta
   if (entries.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        No he detectado datos claros. Edita el texto y pulsa Reinterpretar.
+        No se han detectado datos claros. Edita el texto, pulsa Re-detectar o usa Interpretar con IA.
       </p>
     );
   }
@@ -245,7 +332,9 @@ function InterpretedFields({ interpretation }: { interpretation: VoiceInterpreta
           <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             {labelize(key)}
           </span>
-          <span className="text-right">{Array.isArray(value) ? value.join(", ") : String(value)}</span>
+          <span className="text-right">
+            {Array.isArray(value) ? value.join(", ") : String(value)}
+          </span>
         </li>
       ))}
     </ul>
