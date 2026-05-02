@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Calendar, Home, Users, Package, Wallet, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FloatingVoiceButton } from "@/components/voice/FloatingVoiceButton";
 
 const navItems = [
   { to: "/", label: "Hoy", icon: Home, end: true },
@@ -45,6 +46,9 @@ export default function AppLayout() {
           <Outlet />
         </div>
       </main>
+
+      {/* Botón flotante "Añadir por voz" */}
+      <FloatingVoiceButton />
 
       {/* Bottom nav — mobile first */}
       <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-md">
