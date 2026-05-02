@@ -12,6 +12,9 @@ import Finance from "@/pages/Finance";
 import Settings from "@/pages/Settings";
 import NewVisit from "@/pages/NewVisit";
 import VisitDetail from "@/pages/VisitDetail";
+import NewPatient from "@/pages/NewPatient";
+import NewCenter from "@/pages/NewCenter";
+import NewMaterial from "@/pages/NewMaterial";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,7 +30,10 @@ const App = () => (
             <Route path="/" element={<Today />} />
             <Route path="/agenda" element={<Agenda />} />
             <Route path="/pacientes" element={<Patients />} />
+            <Route path="/pacientes/nuevo" element={<NewPatient />} />
+            <Route path="/centros/nuevo" element={<NewCenter />} />
             <Route path="/material" element={<MaterialPage />} />
+            <Route path="/material/nuevo" element={<NewMaterial />} />
             <Route path="/finanzas" element={<Finance />} />
             <Route path="/configuracion" element={<Settings />} />
             <Route path="/visita/nueva" element={<NewVisit />} />
