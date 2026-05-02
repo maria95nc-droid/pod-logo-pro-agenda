@@ -88,7 +88,13 @@ export default function NewVisit() {
     <div className="space-y-4 pb-8">
       <div className="flex items-center gap-2">
         <Button size="icon" variant="ghost" asChild><Link to="/"><ArrowLeft className="h-4 w-4" /></Link></Button>
-        <h1 className="text-2xl font-bold">Nueva visita</h1>
+        <h1 className="flex-1 text-2xl font-bold">Nueva visita</h1>
+        <MicButton
+          hintIntent="visita"
+          title="Dictar visita"
+          exampleHint='Ej.: "Añadir visita mañana a las 9:30 en Los Olivos hasta las 13:00, con María García y Antonio Pérez, precio 35 euros, desplazamiento 8 euros."'
+          onConfirm={applyVoice}
+        />
       </div>
 
       <Card>
