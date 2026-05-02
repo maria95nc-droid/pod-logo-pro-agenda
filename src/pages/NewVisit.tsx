@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,9 @@ import { centers, patients, fiscalSettings } from "@/data/mock";
 import { formatEUR } from "@/lib/format";
 import { toast } from "sonner";
 import { ArrowLeft, Save, Users } from "lucide-react";
+import { MicButton } from "@/components/voice/MicButton";
+import { consumeVoicePrefill } from "@/components/voice/FloatingVoiceButton";
+import type { VoiceInterpretation } from "@/types/voice";
 
 export default function NewVisit() {
   const navigate = useNavigate();
@@ -22,6 +25,46 @@ export default function NewVisit() {
   const [travel, setTravel] = useState(fiscalSettings.defaultTravelCost);
   const [materialCost, setMaterialCost] = useState(0);
   const [notes, setNotes] = useState("");
+
+  const applyVoice = (data: VoiceInterpretation) => {
+    const v = data.visit;
+    if (!v) return;
+    if (v.date) setDate(v.date);
+    if (v.startTime) setStart(v.startTime);
+    if (v.endTime) setEnd(v.endTime);
+    let resolvedCenterId = centerId;
+    if (v.centerName) {
+      const found = centers.find((c) =>
+        c.name.toLowerCase().includes(v.centerName!.toLowerCase()),
+      );
+      if (found) {
+        resolvedCenterId = found.id;
+        setCenterId(found.id);
+      }
+    }
+    if (v.patientNames?.length) {
+      const matches: Record<string, number> = {};
+      const pool = resolvedCenterId
+        ? patients.filter((p) => p.centerId === resolvedCenterId)
+        : patients;
+      v.patientNames.forEach((name) => {
+        const p = pool.find((x) => x.fullName.toLowerCase().includes(name.toLowerCase()));
+        if (p) matches[p.id] = v.pricePerPatient ?? p.defaultPrice ?? 18;
+      });
+      if (Object.keys(matches).length) setSelectedPatients(matches);
+    }
+    if (typeof v.travelCost === "number") setTravel(v.travelCost);
+    if (typeof v.materialCost === "number") setMaterialCost(v.materialCost);
+    if (v.notes) setNotes(v.notes);
+    toast.success("Visita rellenada desde el dictado");
+  };
+
+  // Pre-rellenar desde el botón flotante
+  useEffect(() => {
+    const pre = consumeVoicePrefill();
+    if (pre?.intent === "visita") applyVoice(pre);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const centerPatients = patients.filter((p) => p.centerId === centerId);
 
