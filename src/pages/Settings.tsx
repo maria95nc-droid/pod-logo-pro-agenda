@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,10 +7,30 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fiscalSettings as initial } from "@/data/mock";
 import { toast } from "sonner";
-import { Save, AlertCircle } from "lucide-react";
+import { Save, AlertCircle, Mic, Sparkles } from "lucide-react";
+import {
+  defaultVoiceSettings,
+  getAiUsage,
+  loadVoiceSettings,
+  saveVoiceSettings,
+  type VoiceSettings,
+} from "@/lib/voiceSettings";
 
 export default function Settings() {
   const [s, setS] = useState(initial);
+  const [voice, setVoice] = useState<VoiceSettings>(defaultVoiceSettings);
+  const [usage, setUsage] = useState(() => getAiUsage());
+
+  useEffect(() => {
+    setVoice(loadVoiceSettings());
+    setUsage(getAiUsage());
+  }, []);
+
+  const updateVoice = (patch: Partial<VoiceSettings>) => {
+    const next = { ...voice, ...patch };
+    setVoice(next);
+    saveVoiceSettings(next);
+  };
 
   return (
     <div className="space-y-4">
