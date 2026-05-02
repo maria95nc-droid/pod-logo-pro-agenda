@@ -1,11 +1,15 @@
+import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatEUR } from "@/lib/format";
 import { materials, visits, centers } from "@/data/mock";
 import { Plus, Package, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { MicButton } from "@/components/voice/MicButton";
+import { setVoicePrefill } from "@/components/voice/FloatingVoiceButton";
 
 export default function MaterialPage() {
+  const navigate = useNavigate();
   const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   const tomorrowVisits = visits.filter((v) => v.visitDate === tomorrowIso);
   const lowStock = materials.filter((m) => m.currentStock <= m.minimumStock);
@@ -13,9 +17,22 @@ export default function MaterialPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Material</h1>
-        <Button size="sm"><Plus className="h-4 w-4" /> Añadir</Button>
+        <div className="flex items-center gap-2">
+          <MicButton
+            hintIntent="material"
+            title="Dictar material"
+            exampleHint='Ej.: "Añadir material guantes nitrilo, stock 50, mínimo 10, categoría protección."'
+            onConfirm={(d) => {
+              setVoicePrefill(d);
+              navigate("/material/nuevo");
+            }}
+          />
+          <Button size="sm" asChild>
+            <Link to="/material/nuevo"><Plus className="h-4 w-4" /> Añadir</Link>
+          </Button>
+        </div>
       </div>
 
       {/* Para mañana */}

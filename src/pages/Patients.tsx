@@ -1,22 +1,34 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { patients, centers } from "@/data/mock";
 import { Plus, Search, Phone, MapPin, AlertTriangle, Building2 } from "lucide-react";
+import { MicButton } from "@/components/voice/MicButton";
+import { setVoicePrefill } from "@/components/voice/FloatingVoiceButton";
 
 export default function Patients() {
   const [query, setQuery] = useState("");
+  const navigate = useNavigate();
 
   const filtered = patients.filter((p) => p.fullName.toLowerCase().includes(query.toLowerCase()));
   const activeCenters = centers.filter((c) => c.isActive);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Pacientes y centros</h1>
+        <MicButton
+          hintIntent="paciente"
+          title="Dictar paciente o centro"
+          exampleHint='Ej.: "Añadir paciente María García en Los Olivos…" o "Añadir residencia Los Pinos en…"'
+          onConfirm={(d) => {
+            setVoicePrefill(d);
+            navigate(d.intent === "centro" ? "/centros/nuevo" : "/pacientes/nuevo");
+          }}
+        />
       </div>
 
       <Tabs defaultValue="pacientes">
