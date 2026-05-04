@@ -158,32 +158,9 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="silence">Auto-parar tras silencio (segundos)</Label>
-            <Input
-              id="silence"
-              type="number"
-              min={0}
-              step={0.5}
-              value={voice.silenceMs / 1000}
-              onChange={(e) => updateVoice({ silenceMs: Math.max(0, +e.target.value * 1000) })}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="maxdur">Duración máxima de escucha (segundos)</Label>
-            <Input
-              id="maxdur"
-              type="number"
-              min={5}
-              value={voice.maxDurationMs / 1000}
-              onChange={(e) => updateVoice({ maxDurationMs: Math.max(5000, +e.target.value * 1000) })}
-            />
-          </div>
-
           <div className="flex items-start gap-2 rounded-lg border border-status-warning/30 bg-status-warning-bg/40 p-3 text-xs">
             <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-status-warning" />
-            <p>El uso de IA puede consumir créditos. Se te pedirá confirmación cada vez.</p>
+            <p>La IA es opcional y siempre manual. En el modo gratis puedes dictar con el teclado del móvil o escribir sin coste.</p>
           </div>
         </CardContent>
       </Card>

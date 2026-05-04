@@ -10,10 +10,6 @@ export interface VoiceSettings {
   aiEnabled: boolean;
   /** Límite mensual de usos de IA. 0 = sin límite */
   monthlyAiLimit: number;
-  /** ms de silencio para auto-parar el dictado */
-  silenceMs: number;
-  /** Duración máxima de escucha en ms */
-  maxDurationMs: number;
 }
 
 const KEY_SETTINGS = "voiceSettings.v1";
@@ -22,8 +18,6 @@ const KEY_USAGE = "voiceAiUsage.v1";
 export const defaultVoiceSettings: VoiceSettings = {
   aiEnabled: true, // disponible como opción manual, NUNCA automática
   monthlyAiLimit: 50,
-  silenceMs: 2000,
-  maxDurationMs: 20_000,
 };
 
 export function loadVoiceSettings(): VoiceSettings {

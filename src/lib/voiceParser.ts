@@ -137,6 +137,21 @@ function extractCenterName(text: string): string | undefined {
   return undefined;
 }
 
+function extractPatientNameSimple(text: string): string | undefined {
+  const m = text.match(/(?:crear|añadir|agregar)\s+paciente\s+(.+?)(?=\s+en\b|\s+residencia\b|\s+centro\b|\s+precio\b|\s+tratamiento\b|$)/i);
+  return m?.[1]?.trim();
+}
+
+function extractPatientCenterSimple(text: string): string | undefined {
+  const m = text.match(/\ben(?:\s+la)?\s+(?:residencia|centro)\s+(.+?)(?=\s+precio\b|\s+tratamiento\b|$)/i);
+  return m?.[1]?.trim() ?? extractCenterName(text);
+}
+
+function extractTreatmentSimple(text: string): string | undefined {
+  const m = text.match(/\btratamiento\s+(.+)$/i);
+  return m?.[1]?.trim();
+}
+
 function extractCenterType(text: string): "residencia" | "centro_dia" | "domicilio" | undefined {
   const t = text.toLowerCase();
   if (/centro\s+de\s+día|centro\s+de\s+dia/.test(t)) return "centro_dia";
@@ -174,10 +189,11 @@ export function parseVoiceLocal(text: string): VoiceInterpretation {
       break;
     }
     case "paciente": {
-      const name = extractName(text, /paciente\s+/i);
+      const name = extractPatientNameSimple(text) ?? extractName(text, /paciente\s+/i);
       interp.patient = {
         fullName: name,
-        centerName: extractCenterName(text),
+        centerName: extractPatientCenterSimple(text),
+        usualTreatment: extractTreatmentSimple(text),
         defaultPrice: extractEuros(text),
       };
       break;

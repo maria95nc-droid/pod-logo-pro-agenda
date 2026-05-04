@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Mic } from "lucide-react";
 import { VoiceDictateModal } from "./VoiceDictateModal";
-import { isSpeechRecognitionSupported } from "@/hooks/useSpeechRecognition";
 import { toast } from "sonner";
 import type { VoiceInterpretation } from "@/types/voice";
 
@@ -37,15 +36,7 @@ export function consumeVoicePrefill(): VoiceInterpretation | null {
 export function FloatingVoiceButton() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const supported = isSpeechRecognitionSupported();
-
-  const handleClick = () => {
-    if (!supported) {
-      toast.error("El dictado por voz no está disponible en este dispositivo.");
-      return;
-    }
-    setOpen(true);
-  };
+  const handleClick = () => setOpen(true);
 
   const handleConfirm = (interpretation: VoiceInterpretation) => {
     setVoicePrefill(interpretation);
