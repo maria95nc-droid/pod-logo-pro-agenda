@@ -3,8 +3,6 @@ import { Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { VoiceDictateModal } from "./VoiceDictateModal";
-import { isSpeechRecognitionSupported } from "@/hooks/useSpeechRecognition";
-import { toast } from "sonner";
 import type { VoiceIntent, VoiceInterpretation } from "@/types/voice";
 
 interface MicButtonProps {
@@ -28,15 +26,7 @@ export function MicButton({
   className,
 }: MicButtonProps) {
   const [open, setOpen] = useState(false);
-  const supported = isSpeechRecognitionSupported();
-
-  const handleClick = () => {
-    if (!supported) {
-      toast.error("El dictado por voz no está disponible en este dispositivo.");
-      return;
-    }
-    setOpen(true);
-  };
+  const handleClick = () => setOpen(true);
 
   if (variant === "chip") {
     return (
