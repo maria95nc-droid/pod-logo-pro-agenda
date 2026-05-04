@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -17,17 +17,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Mic, MicOff, Loader2, Check, X, AlertCircle, Sparkles, Pencil } from "lucide-react";
-import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { Check, Loader2, Mic, Sparkles, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { parseVoiceLocal } from "@/lib/voiceParser";
-import {
-  canUseAi,
-  incrementAiUsage,
-  loadVoiceSettings,
-} from "@/lib/voiceSettings";
+import { canUseAi, incrementAiUsage, loadVoiceSettings } from "@/lib/voiceSettings";
 import type { VoiceIntent, VoiceInterpretation } from "@/types/voice";
 
 interface VoiceDictateModalProps {
@@ -39,7 +35,7 @@ interface VoiceDictateModalProps {
   onConfirm: (interpretation: VoiceInterpretation, transcript: string) => void;
 }
 
-type Phase = "listening" | "review" | "interpreting" | "error";
+type Phase = "draft" | "review" | "interpreting";
 
 export function VoiceDictateModal({
   open,
@@ -49,71 +45,30 @@ export function VoiceDictateModal({
   exampleHint,
   onConfirm,
 }: VoiceDictateModalProps) {
-  const settings = useRef(loadVoiceSettings());
-  const speech = useSpeechRecognition("es-ES", {
-    silenceMs: settings.current.silenceMs,
-    maxDurationMs: settings.current.maxDurationMs,
-  });
-  const [phase, setPhase] = useState<Phase>("listening");
+  const [phase, setPhase] = useState<Phase>("draft");
   const [editableTranscript, setEditableTranscript] = useState("");
   const [interpretation, setInterpretation] = useState<VoiceInterpretation | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [askAi, setAskAi] = useState(false);
+  const settings = useMemo(() => loadVoiceSettings(), [open]);
 
-  // Reset al abrir
   useEffect(() => {
     if (open) {
-      settings.current = loadVoiceSettings();
-      speech.reset();
+      setPhase("draft");
       setEditableTranscript("");
       setInterpretation(null);
-      setErrorMsg(null);
       setAskAi(false);
-      if (speech.supported) {
-        setPhase("listening");
-        setTimeout(() => speech.start(), 150);
-      } else {
-        setPhase("error");
-        setErrorMsg(
-          "El dictado por voz no está disponible en este dispositivo. Puedes escribirlo manualmente.",
-        );
-      }
-    } else {
-      speech.stop();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Cuando para de escuchar, pasar automáticamente a revisión local (sin IA)
-  useEffect(() => {
-    if (phase !== "listening") return;
-    if (speech.isListening) return;
-    // Solo si ya hay transcripción final
-    const text = speech.transcript.trim();
-    if (!text) return;
-    setEditableTranscript(text);
-    setInterpretation(parseVoiceLocal(text));
-    setPhase("review");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [speech.isListening, speech.transcript]);
-
-  const handleStop = () => speech.stop();
-
-  const handleManualText = () => {
-    // Si el usuario decide pasar a revisión sin haber dictado nada
-    speech.stop();
-    setEditableTranscript("");
-    setInterpretation({ intent: "desconocido", confidence: 0 });
-    setPhase("review");
-  };
-
-  const handleReparseLocal = () => {
+  const handleDetectLocal = () => {
     if (!editableTranscript.trim()) {
       toast.message("Escribe o dicta algo primero.");
       return;
     }
-    setInterpretation(parseVoiceLocal(editableTranscript));
-    toast.success("Re-detectado con reglas locales");
+    const parsed = withHintIntent(parseVoiceLocal(editableTranscript), hintIntent);
+    setInterpretation(parsed);
+    setPhase("review");
+    toast.success("Datos detectados en modo gratis");
   };
 
   const requestAi = () => {
@@ -121,7 +76,7 @@ export function VoiceDictateModal({
       toast.message("No hay texto que interpretar.");
       return;
     }
-    const check = canUseAi(settings.current);
+    const check = canUseAi(settings);
     if (!check.ok) {
       toast.error(check.reason ?? "IA no disponible");
       return;
@@ -150,72 +105,60 @@ export function VoiceDictateModal({
   };
 
   const handleConfirm = () => {
-    if (!interpretation) return;
+    if (!interpretation) {
+      toast.message("Pulsa Detectar datos antes de confirmar.");
+      return;
+    }
     onConfirm(interpretation, editableTranscript);
     onOpenChange(false);
   };
 
-  const liveText = (speech.transcript + (speech.interim ? " " + speech.interim : "")).trim();
-
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-md gap-3 p-0 overflow-hidden">
+        <DialogContent className="max-w-md gap-3 overflow-hidden p-0">
           <DialogHeader className="space-y-1 px-5 pt-5">
             <DialogTitle className="flex items-center gap-2 text-lg">
               <Mic className="h-4 w-4 text-primary" />
               {title}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              {exampleHint ?? "Habla con naturalidad. Modo gratis sin IA por defecto."}
+              {exampleHint ?? "Usa el micrófono nativo del teclado del móvil o escribe manualmente."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 px-5 pb-5">
-            {/* FASE: ESCUCHANDO */}
-            {phase === "listening" && (
+            {phase === "draft" && (
               <div className="space-y-3">
-                <div className="flex flex-col items-center justify-center rounded-xl bg-primary-soft py-6">
-                  <div className="relative">
-                    {speech.isListening && (
-                      <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
-                    )}
-                    <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-primary">
-                      <Mic className="h-7 w-7" />
-                    </div>
-                  </div>
-                  <p className="mt-3 text-sm font-medium text-primary">
-                    {speech.isListening ? "Escuchando…" : "Preparado"}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Para sola tras 2s de silencio · máx. 20s
-                  </p>
+                <div className="rounded-xl border border-border bg-primary-soft/50 p-3 text-xs text-muted-foreground">
+                  Modo gratis por defecto. La app no escucha automáticamente, no guarda audios y solo
+                  procesa el texto cuando pulsas <strong className="text-foreground">Detectar datos</strong>.
                 </div>
-                <div className="min-h-[72px] rounded-lg border border-border bg-muted/40 p-3 text-sm">
-                  {liveText ? (
-                    <p className="text-foreground">{liveText}</p>
-                  ) : (
-                    <p className="text-muted-foreground">Empieza a hablar…</p>
-                  )}
+
+                <div>
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Dicta o escribe aquí
+                  </p>
+                  <Textarea
+                    value={editableTranscript}
+                    onChange={(e) => setEditableTranscript(e.target.value)}
+                    rows={7}
+                    className="resize-none text-sm"
+                    placeholder="Ej.: Crear paciente José Luis Martínez Oliveros en la residencia Ave María"
+                  />
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" onClick={() => onOpenChange(false)}>
                     <X className="h-4 w-4" /> Cancelar
                   </Button>
-                  {speech.isListening ? (
-                    <Button className="flex-1" onClick={handleStop}>
-                      <MicOff className="h-4 w-4" /> Parar
-                    </Button>
-                  ) : (
-                    <Button className="flex-1" onClick={handleManualText}>
-                      <Pencil className="h-4 w-4" /> Escribir
-                    </Button>
-                  )}
+                  <Button onClick={handleDetectLocal}>
+                    Detectar datos
+                  </Button>
                 </div>
               </div>
             )}
 
-            {/* FASE: INTERPRETANDO (IA) */}
             {phase === "interpreting" && (
               <div className="flex flex-col items-center justify-center gap-3 py-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -223,17 +166,16 @@ export function VoiceDictateModal({
               </div>
             )}
 
-            {/* FASE: REVISIÓN */}
             {phase === "review" && interpretation && (
               <div className="space-y-3">
                 <div>
                   <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Texto detectado (editable)
+                    Dicta o escribe aquí
                   </p>
                   <Textarea
                     value={editableTranscript}
                     onChange={(e) => setEditableTranscript(e.target.value)}
-                    rows={3}
+                    rows={4}
                     className="text-sm"
                     placeholder="Escribe o corrige el texto…"
                   />
@@ -245,12 +187,12 @@ export function VoiceDictateModal({
                       modo gratis
                     </span>
                   </p>
-                  <InterpretedFields interpretation={interpretation} />
+                  <EditableFields interpretation={interpretation} onChange={setInterpretation} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" size="sm" onClick={handleReparseLocal}>
-                    Re-detectar
+                  <Button variant="outline" size="sm" onClick={handleDetectLocal}>
+                    Detectar datos
                   </Button>
                   <Button
                     variant="secondary"
@@ -262,26 +204,13 @@ export function VoiceDictateModal({
                   </Button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+                  <Button variant="ghost" size="sm" onClick={() => setPhase("draft")}>
                     <X className="h-4 w-4" /> Cancelar
                   </Button>
                   <Button size="sm" onClick={handleConfirm}>
                     <Check className="h-4 w-4" /> Confirmar
                   </Button>
                 </div>
-              </div>
-            )}
-
-            {/* FASE: ERROR */}
-            {phase === "error" && (
-              <div className="space-y-3">
-                <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-status-cancelled-bg p-3 text-sm">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                  <p>{errorMsg}</p>
-                </div>
-                <Button className="w-full" variant="outline" onClick={() => onOpenChange(false)}>
-                  Cerrar
-                </Button>
               </div>
             )}
           </div>
@@ -306,76 +235,296 @@ export function VoiceDictateModal({
   );
 }
 
-function InterpretedFields({ interpretation }: { interpretation: VoiceInterpretation }) {
-  const obj =
-    interpretation.center ??
-    interpretation.patient ??
-    interpretation.visit ??
-    interpretation.material ??
-    interpretation.treatment ??
-    interpretation.payment ??
-    {};
-  const entries = Object.entries(obj as Record<string, unknown>).filter(
-    ([, v]) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0),
-  );
-  if (entries.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        No se han detectado datos claros. Edita el texto, pulsa Re-detectar o usa Interpretar con IA.
-      </p>
-    );
-  }
-  return (
-    <ul className="divide-y divide-border rounded-lg border border-border bg-muted/30">
-      {entries.map(([key, value]) => (
-        <li key={key} className="flex items-start justify-between gap-3 px-3 py-1.5 text-sm">
-          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {labelize(key)}
-          </span>
-          <span className="text-right">
-            {Array.isArray(value) ? value.join(", ") : String(value)}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
+function withHintIntent(interpretation: VoiceInterpretation, hintIntent?: VoiceIntent): VoiceInterpretation {
+  if (interpretation.intent !== "desconocido" || !hintIntent) return interpretation;
+
+  const next: VoiceInterpretation = {
+    ...interpretation,
+    intent: hintIntent,
+    confidence: 0.25,
+  };
+
+  if (hintIntent === "centro") next.center = next.center ?? {};
+  if (hintIntent === "paciente") next.patient = next.patient ?? {};
+  if (hintIntent === "visita") next.visit = next.visit ?? {};
+  if (hintIntent === "material") next.material = next.material ?? {};
+  if (hintIntent === "tratamiento") next.treatment = next.treatment ?? {};
+  if (hintIntent === "cobro") next.payment = next.payment ?? {};
+
+  return next;
 }
 
-function labelize(key: string) {
-  const map: Record<string, string> = {
-    name: "Nombre",
-    fullName: "Nombre",
-    type: "Tipo",
-    address: "Dirección",
-    city: "Ciudad",
-    contactName: "Contacto",
-    contactPhone: "Teléfono",
-    defaultPricePerPatient: "Precio/paciente",
-    defaultPrice: "Precio",
-    notes: "Notas",
-    centerName: "Centro",
-    usualTreatment: "Tratamiento habitual",
-    nextVisitDate: "Próxima visita",
-    warnings: "Avisos",
-    date: "Fecha",
-    startTime: "Inicio",
-    endTime: "Fin",
-    patientNames: "Pacientes",
-    pricePerPatient: "Precio/paciente",
-    travelCost: "Desplazamiento",
-    materialCost: "Material",
-    currentStock: "Stock",
-    minimumStock: "Mínimo",
-    category: "Categoría",
-    unit: "Unidad",
-    unitCost: "Coste unidad",
-    patientName: "Paciente",
-    treatmentDone: "Tratamiento",
-    amountCharged: "Cobrado",
-    paymentStatus: "Estado",
-    target: "Objetivo",
-    newStatus: "Nuevo estado",
-    when: "Cuándo",
-  };
-  return map[key] ?? key;
+function EditableFields({
+  interpretation,
+  onChange,
+}: {
+  interpretation: VoiceInterpretation;
+  onChange: (next: VoiceInterpretation) => void;
+}) {
+  switch (interpretation.intent) {
+    case "paciente":
+      return (
+        <div className="grid gap-2 rounded-lg border border-border bg-muted/30 p-3">
+          <Field label="Nombre">
+            <Input
+              value={interpretation.patient?.fullName ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                patient: { ...interpretation.patient, fullName: e.target.value },
+              })}
+            />
+          </Field>
+          <Field label="Centro">
+            <Input
+              value={interpretation.patient?.centerName ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                patient: { ...interpretation.patient, centerName: e.target.value },
+              })}
+            />
+          </Field>
+          <Field label="Precio">
+            <Input
+              type="number"
+              value={interpretation.patient?.defaultPrice ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                patient: {
+                  ...interpretation.patient,
+                  defaultPrice: e.target.value === "" ? undefined : Number(e.target.value),
+                },
+              })}
+            />
+          </Field>
+          <Field label="Tratamiento">
+            <Input
+              value={interpretation.patient?.usualTreatment ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                patient: { ...interpretation.patient, usualTreatment: e.target.value },
+              })}
+            />
+          </Field>
+        </div>
+      );
+    case "centro":
+      return (
+        <div className="grid gap-2 rounded-lg border border-border bg-muted/30 p-3">
+          <Field label="Nombre">
+            <Input
+              value={interpretation.center?.name ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                center: { ...interpretation.center, name: e.target.value },
+              })}
+            />
+          </Field>
+          <Field label="Dirección">
+            <Input
+              value={interpretation.center?.address ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                center: { ...interpretation.center, address: e.target.value },
+              })}
+            />
+          </Field>
+          <Field label="Precio por paciente">
+            <Input
+              type="number"
+              value={interpretation.center?.defaultPricePerPatient ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                center: {
+                  ...interpretation.center,
+                  defaultPricePerPatient: e.target.value === "" ? undefined : Number(e.target.value),
+                },
+              })}
+            />
+          </Field>
+        </div>
+      );
+    case "visita":
+      return (
+        <div className="grid gap-2 rounded-lg border border-border bg-muted/30 p-3">
+          <Field label="Centro">
+            <Input
+              value={interpretation.visit?.centerName ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                visit: { ...interpretation.visit, centerName: e.target.value },
+              })}
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Fecha">
+              <Input
+                type="date"
+                value={interpretation.visit?.date ?? ""}
+                onChange={(e) => onChange({
+                  ...interpretation,
+                  visit: { ...interpretation.visit, date: e.target.value },
+                })}
+              />
+            </Field>
+            <Field label="Hora">
+              <Input
+                type="time"
+                value={interpretation.visit?.startTime ?? ""}
+                onChange={(e) => onChange({
+                  ...interpretation,
+                  visit: { ...interpretation.visit, startTime: e.target.value },
+                })}
+              />
+            </Field>
+          </div>
+          <Field label="Pacientes (separados por coma)">
+            <Input
+              value={interpretation.visit?.patientNames?.join(", ") ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                visit: {
+                  ...interpretation.visit,
+                  patientNames: e.target.value
+                    .split(",")
+                    .map((name) => name.trim())
+                    .filter(Boolean),
+                },
+              })}
+            />
+          </Field>
+          <Field label="Precio por paciente">
+            <Input
+              type="number"
+              value={interpretation.visit?.pricePerPatient ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                visit: {
+                  ...interpretation.visit,
+                  pricePerPatient: e.target.value === "" ? undefined : Number(e.target.value),
+                },
+              })}
+            />
+          </Field>
+        </div>
+      );
+    case "material":
+      return (
+        <div className="grid gap-2 rounded-lg border border-border bg-muted/30 p-3">
+          <Field label="Nombre">
+            <Input
+              value={interpretation.material?.name ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                material: { ...interpretation.material, name: e.target.value },
+              })}
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Stock">
+              <Input
+                type="number"
+                value={interpretation.material?.currentStock ?? ""}
+                onChange={(e) => onChange({
+                  ...interpretation,
+                  material: {
+                    ...interpretation.material,
+                    currentStock: e.target.value === "" ? undefined : Number(e.target.value),
+                  },
+                })}
+              />
+            </Field>
+            <Field label="Mínimo">
+              <Input
+                type="number"
+                value={interpretation.material?.minimumStock ?? ""}
+                onChange={(e) => onChange({
+                  ...interpretation,
+                  material: {
+                    ...interpretation.material,
+                    minimumStock: e.target.value === "" ? undefined : Number(e.target.value),
+                  },
+                })}
+              />
+            </Field>
+          </div>
+          <Field label="Coste unitario">
+            <Input
+              type="number"
+              value={interpretation.material?.unitCost ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                material: {
+                  ...interpretation.material,
+                  unitCost: e.target.value === "" ? undefined : Number(e.target.value),
+                },
+              })}
+            />
+          </Field>
+        </div>
+      );
+    case "tratamiento":
+      return (
+        <div className="grid gap-2 rounded-lg border border-border bg-muted/30 p-3">
+          <Field label="Paciente">
+            <Input
+              value={interpretation.treatment?.patientName ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                treatment: { ...interpretation.treatment, patientName: e.target.value },
+              })}
+            />
+          </Field>
+          <Field label="Tratamiento realizado">
+            <Textarea
+              rows={3}
+              value={interpretation.treatment?.treatmentDone ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                treatment: { ...interpretation.treatment, treatmentDone: e.target.value },
+              })}
+            />
+          </Field>
+        </div>
+      );
+    case "cobro":
+      return (
+        <div className="grid gap-2 rounded-lg border border-border bg-muted/30 p-3">
+          <Field label="Objetivo">
+            <Input
+              value={interpretation.payment?.target ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                payment: { ...interpretation.payment, target: e.target.value },
+              })}
+            />
+          </Field>
+          <Field label="Estado">
+            <Input
+              value={interpretation.payment?.newStatus ?? ""}
+              onChange={(e) => onChange({
+                ...interpretation,
+                payment: { ...interpretation.payment, newStatus: e.target.value as never },
+              })}
+            />
+          </Field>
+        </div>
+      );
+    default:
+      return (
+        <p className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+          No se han detectado datos claros. Edita el texto y pulsa Detectar datos o usa Interpretar con IA.
+        </p>
+      );
+  }
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="grid gap-1.5">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
 }
