@@ -24,6 +24,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { parseVoiceLocal } from "@/lib/voiceParser";
 import { canUseAi, incrementAiUsage, loadVoiceSettings } from "@/lib/voiceSettings";
+import { saveVoiceInterpretation } from "@/lib/voiceSave";
+import { useInvalidateAll } from "@/hooks/useData";
+import { useNavigate } from "react-router-dom";
 import type { VoiceIntent, VoiceInterpretation } from "@/types/voice";
 
 interface VoiceDictateModalProps {
@@ -32,7 +35,10 @@ interface VoiceDictateModalProps {
   hintIntent?: VoiceIntent;
   title?: string;
   exampleHint?: string;
-  onConfirm: (interpretation: VoiceInterpretation, transcript: string) => void;
+  /** Opcional: si se pasa, se llama además del guardado por defecto. */
+  onConfirm?: (interpretation: VoiceInterpretation, transcript: string) => void;
+  /** Si false, NO guarda en backend (solo dispara onConfirm) */
+  autoSave?: boolean;
 }
 
 type Phase = "draft" | "review" | "interpreting";
