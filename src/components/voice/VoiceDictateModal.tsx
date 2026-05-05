@@ -238,8 +238,8 @@ export function VoiceDictateModal({
                   <Button variant="ghost" size="sm" onClick={() => setPhase("draft")}>
                     <X className="h-4 w-4" /> Cancelar
                   </Button>
-                  <Button size="sm" onClick={handleConfirm}>
-                    <Check className="h-4 w-4" /> Confirmar
+                  <Button size="sm" onClick={handleConfirm} disabled={saving}>
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmar
                   </Button>
                 </div>
               </div>
