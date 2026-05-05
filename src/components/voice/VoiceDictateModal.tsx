@@ -115,13 +115,33 @@ export function VoiceDictateModal({
     }
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!interpretation) {
       toast.message("Pulsa Detectar datos antes de confirmar.");
       return;
     }
-    onConfirm(interpretation, editableTranscript);
-    onOpenChange(false);
+    if (autoSave) {
+      setSaving(true);
+      try {
+        const result = await saveVoiceInterpretation(interpretation);
+        if (!result.ok) {
+          toast.error(result.message);
+          setSaving(false);
+          return;
+        }
+        toast.success(result.message);
+        invalidateAll();
+        onConfirm?.(interpretation, editableTranscript);
+        onOpenChange(false);
+        if (result.redirect) navigate(result.redirect);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Error al guardar");
+        setSaving(false);
+      }
+    } else {
+      onConfirm?.(interpretation, editableTranscript);
+      onOpenChange(false);
+    }
   };
 
   return (
