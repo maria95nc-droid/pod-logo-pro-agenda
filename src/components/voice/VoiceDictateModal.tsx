@@ -50,12 +50,16 @@ export function VoiceDictateModal({
   title = "Dictado por voz",
   exampleHint,
   onConfirm,
+  autoSave = true,
 }: VoiceDictateModalProps) {
   const [phase, setPhase] = useState<Phase>("draft");
   const [editableTranscript, setEditableTranscript] = useState("");
   const [interpretation, setInterpretation] = useState<VoiceInterpretation | null>(null);
   const [askAi, setAskAi] = useState(false);
+  const [saving, setSaving] = useState(false);
   const settings = useMemo(() => loadVoiceSettings(), [open]);
+  const invalidateAll = useInvalidateAll();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (open) {
@@ -63,6 +67,7 @@ export function VoiceDictateModal({
       setEditableTranscript("");
       setInterpretation(null);
       setAskAi(false);
+      setSaving(false);
     }
   }, [open]);
 
