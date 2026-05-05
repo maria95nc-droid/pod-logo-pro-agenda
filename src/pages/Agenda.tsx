@@ -5,12 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatEUR } from "@/lib/format";
-import { visits, centers } from "@/data/mock";
+import { useVisits, useCenters } from "@/hooks/useData";
 import { ChevronLeft, ChevronRight, Plus, Clock, Users } from "lucide-react";
 
 const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const startOfWeek = (d: Date) => { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0,0,0,0); return x; };
 const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
@@ -18,10 +17,12 @@ const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.get
 export default function Agenda() {
   const [cursor, setCursor] = useState(new Date());
   const [tab, setTab] = useState("dia");
+  const { data: visits = [] } = useVisits();
+  const { data: centers = [] } = useCenters();
 
   const dayVisits = useMemo(
-    () => visits.filter((v) => v.visitDate === iso(cursor)).sort((a, b) => a.startTime.localeCompare(b.startTime)),
-    [cursor]
+    () => visits.filter((v) => v.visit_date === iso(cursor)).sort((a, b) => (a.start_time ?? "").localeCompare(b.start_time ?? "")),
+    [cursor, visits]
   );
 
   const weekStart = startOfWeek(cursor);
@@ -51,7 +52,6 @@ export default function Agenda() {
           <TabsTrigger value="anual">Año</TabsTrigger>
         </TabsList>
 
-        {/* DÍA */}
         <TabsContent value="dia" className="space-y-3">
           <div className="flex items-center justify-between rounded-xl bg-card p-2 shadow-card">
             <Button size="icon" variant="ghost" onClick={() => shift(-1)}><ChevronLeft className="h-4 w-4" /></Button>
@@ -60,27 +60,25 @@ export default function Agenda() {
             </p>
             <Button size="icon" variant="ghost" onClick={() => shift(1)}><ChevronRight className="h-4 w-4" /></Button>
           </div>
-          {dayVisits.length === 0 && (
-            <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">Sin visitas este día.</CardContent></Card>
-          )}
+          {dayVisits.length === 0 && <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">Sin visitas este día.</CardContent></Card>}
           {dayVisits.map((v) => {
-            const c = centers.find((x) => x.id === v.centerId);
+            const c = centers.find((x) => x.id === v.center_id);
             return (
               <Link key={v.id} to={`/visita/${v.id}`}>
                 <Card className="shadow-card transition-smooth hover:shadow-elevated">
                   <CardContent className="flex items-center gap-3 p-4">
                     <div className="flex flex-col items-center rounded-lg bg-primary-soft px-3 py-2 text-primary">
-                      <span className="text-[10px] font-medium uppercase">{v.startTime}</span>
-                      <span className="text-[10px]">{v.endTime}</span>
+                      <span className="text-[10px] font-medium uppercase">{v.start_time}</span>
+                      <span className="text-[10px]">{v.end_time}</span>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">{c?.name}</p>
+                      <p className="truncate font-semibold">{c?.name ?? "Sin centro"}</p>
                       <div className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" />{v.patientsCount}</span>
-                        <span>{formatEUR(v.grossAmount)}</span>
+                        <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" />{v.patients_count}</span>
+                        <span>{formatEUR(Number(v.gross_amount))}</span>
                       </div>
                     </div>
-                    <StatusBadge status={v.status} />
+                    <StatusBadge status={v.status as any} />
                   </CardContent>
                 </Card>
               </Link>
@@ -88,7 +86,6 @@ export default function Agenda() {
           })}
         </TabsContent>
 
-        {/* SEMANA */}
         <TabsContent value="semana" className="space-y-3">
           <div className="flex items-center justify-between rounded-xl bg-card p-2 shadow-card">
             <Button size="icon" variant="ghost" onClick={() => shift(-7)}><ChevronLeft className="h-4 w-4" /></Button>
@@ -99,8 +96,8 @@ export default function Agenda() {
           </div>
           <div className="space-y-2">
             {weekDays.map((d) => {
-              const list = visits.filter((v) => v.visitDate === iso(d));
-              const gross = list.reduce((s, v) => s + v.grossAmount, 0);
+              const list = visits.filter((v) => v.visit_date === iso(d));
+              const gross = list.reduce((s, v) => s + Number(v.gross_amount), 0);
               return (
                 <Card key={iso(d)} className="shadow-card">
                   <CardContent className="p-3">
@@ -116,13 +113,13 @@ export default function Agenda() {
                     ) : (
                       <div className="space-y-1">
                         {list.map((v) => {
-                          const c = centers.find((x) => x.id === v.centerId);
+                          const c = centers.find((x) => x.id === v.center_id);
                           return (
                             <Link key={v.id} to={`/visita/${v.id}`} className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5 text-xs transition-smooth hover:bg-muted">
                               <Clock className="h-3 w-3 text-muted-foreground" />
-                              <span className="font-medium">{v.startTime}</span>
+                              <span className="font-medium">{v.start_time}</span>
                               <span className="truncate flex-1">{c?.name}</span>
-                              <StatusBadge status={v.status} className="text-[10px]" />
+                              <StatusBadge status={v.status as any} className="text-[10px]" />
                             </Link>
                           );
                         })}
@@ -135,7 +132,6 @@ export default function Agenda() {
           </div>
         </TabsContent>
 
-        {/* MES */}
         <TabsContent value="mes" className="space-y-3">
           <div className="flex items-center justify-between rounded-xl bg-card p-2 shadow-card">
             <Button size="icon" variant="ghost" onClick={() => shiftMonth(-1)}><ChevronLeft className="h-4 w-4" /></Button>
@@ -149,16 +145,14 @@ export default function Agenda() {
               </div>
               <div className="grid grid-cols-7 gap-1">
                 {monthDays.map((d) => {
-                  const list = visits.filter((v) => v.visitDate === iso(d));
+                  const list = visits.filter((v) => v.visit_date === iso(d));
                   const isCurrent = d.getMonth() === cursor.getMonth();
                   const isToday = iso(d) === iso(new Date());
                   return (
                     <button
                       key={iso(d)}
                       onClick={() => { setCursor(d); setTab("dia"); }}
-                      className={`relative aspect-square rounded-md p-1 text-xs transition-smooth hover:bg-muted ${
-                        isCurrent ? "text-foreground" : "text-muted-foreground/40"
-                      } ${isToday ? "bg-primary-soft font-bold text-primary" : ""}`}
+                      className={`relative aspect-square rounded-md p-1 text-xs transition-smooth hover:bg-muted ${isCurrent ? "text-foreground" : "text-muted-foreground/40"} ${isToday ? "bg-primary-soft font-bold text-primary" : ""}`}
                     >
                       <span className="absolute top-1 left-1">{d.getDate()}</span>
                       {list.length > 0 && (
@@ -174,7 +168,6 @@ export default function Agenda() {
           </Card>
         </TabsContent>
 
-        {/* ANUAL */}
         <TabsContent value="anual" className="space-y-3">
           <div className="flex items-center justify-between rounded-xl bg-card p-2 shadow-card">
             <Button size="icon" variant="ghost" onClick={() => setCursor(new Date(cursor.getFullYear() - 1, 0, 1))}><ChevronLeft className="h-4 w-4" /></Button>
@@ -183,14 +176,11 @@ export default function Agenda() {
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {MONTHS.map((m, i) => {
-              const count = visits.filter((v) => {
-                const d = new Date(v.visitDate);
+              const list = visits.filter((v) => {
+                const d = new Date(v.visit_date);
                 return d.getFullYear() === cursor.getFullYear() && d.getMonth() === i;
-              }).length;
-              const gross = visits.filter((v) => {
-                const d = new Date(v.visitDate);
-                return d.getFullYear() === cursor.getFullYear() && d.getMonth() === i;
-              }).reduce((s, v) => s + v.grossAmount, 0);
+              });
+              const gross = list.reduce((s, v) => s + Number(v.gross_amount), 0);
               return (
                 <button
                   key={m}
@@ -198,7 +188,7 @@ export default function Agenda() {
                   className="rounded-xl border border-border bg-card p-3 text-left shadow-card transition-smooth hover:shadow-elevated hover:-translate-y-0.5"
                 >
                   <p className="text-sm font-semibold">{m}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{count} visita{count !== 1 ? "s" : ""}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{list.length} visita{list.length !== 1 ? "s" : ""}</p>
                   <p className="mt-0.5 text-xs font-semibold text-primary">{formatEUR(gross)}</p>
                 </button>
               );
