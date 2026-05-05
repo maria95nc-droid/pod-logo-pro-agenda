@@ -14,7 +14,414 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      centers: {
+        Row: {
+          address: string | null
+          city: string | null
+          contact_person: string | null
+          contact_phone: string | null
+          created_at: string
+          default_price_per_patient: number | null
+          id: string
+          is_active: boolean
+          name: string
+          notes: string | null
+          type: string
+          updated_at: string
+          user_id: string
+          usual_schedule: string | null
+        }
+        Insert: {
+          address?: string | null
+          city?: string | null
+          contact_person?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          default_price_per_patient?: number | null
+          id?: string
+          is_active?: boolean
+          name: string
+          notes?: string | null
+          type?: string
+          updated_at?: string
+          user_id: string
+          usual_schedule?: string | null
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          contact_person?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          default_price_per_patient?: number | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          notes?: string | null
+          type?: string
+          updated_at?: string
+          user_id?: string
+          usual_schedule?: string | null
+        }
+        Relationships: []
+      }
+      expenses: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          description: string | null
+          expense_date: string
+          id: string
+          updated_at: string
+          user_id: string
+          visit_id: string | null
+        }
+        Insert: {
+          amount?: number
+          category?: string
+          created_at?: string
+          description?: string | null
+          expense_date?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+          visit_id?: string | null
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          description?: string | null
+          expense_date?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      materials: {
+        Row: {
+          category: string
+          created_at: string
+          current_stock: number
+          estimated_unit_cost: number | null
+          id: string
+          is_essential: boolean
+          minimum_stock: number
+          name: string
+          notes: string | null
+          unit: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          current_stock?: number
+          estimated_unit_cost?: number | null
+          id?: string
+          is_essential?: boolean
+          minimum_stock?: number
+          name: string
+          notes?: string | null
+          unit?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          current_stock?: number
+          estimated_unit_cost?: number | null
+          id?: string
+          is_essential?: boolean
+          minimum_stock?: number
+          name?: string
+          notes?: string | null
+          unit?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      patients: {
+        Row: {
+          allergies: string | null
+          birth_date: string | null
+          center_id: string | null
+          clinical_notes: string | null
+          created_at: string
+          default_price: number | null
+          full_name: string
+          id: string
+          important_warnings: string | null
+          is_active: boolean
+          last_visit_date: string | null
+          next_visit_date: string | null
+          patient_code: string | null
+          phone: string | null
+          updated_at: string
+          user_id: string
+          usual_treatment: string | null
+        }
+        Insert: {
+          allergies?: string | null
+          birth_date?: string | null
+          center_id?: string | null
+          clinical_notes?: string | null
+          created_at?: string
+          default_price?: number | null
+          full_name: string
+          id?: string
+          important_warnings?: string | null
+          is_active?: boolean
+          last_visit_date?: string | null
+          next_visit_date?: string | null
+          patient_code?: string | null
+          phone?: string | null
+          updated_at?: string
+          user_id: string
+          usual_treatment?: string | null
+        }
+        Update: {
+          allergies?: string | null
+          birth_date?: string | null
+          center_id?: string | null
+          clinical_notes?: string | null
+          created_at?: string
+          default_price?: number | null
+          full_name?: string
+          id?: string
+          important_warnings?: string | null
+          is_active?: boolean
+          last_visit_date?: string | null
+          next_visit_date?: string | null
+          patient_code?: string | null
+          phone?: string | null
+          updated_at?: string
+          user_id?: string
+          usual_treatment?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patients_center_id_fkey"
+            columns: ["center_id"]
+            isOneToOne: false
+            referencedRelation: "centers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      visit_materials: {
+        Row: {
+          created_at: string
+          id: string
+          material_id: string | null
+          material_name: string | null
+          notes: string | null
+          quantity: number
+          visit_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          material_id?: string | null
+          material_name?: string | null
+          notes?: string | null
+          quantity?: number
+          visit_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          material_id?: string | null
+          material_name?: string | null
+          notes?: string | null
+          quantity?: number
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visit_materials_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_materials_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      visit_patients: {
+        Row: {
+          attended: boolean
+          created_at: string
+          id: string
+          patient_id: string | null
+          patient_name: string | null
+          payment_status: string
+          price_charged: number
+          treatment_done: string | null
+          treatment_notes: string | null
+          visit_id: string
+        }
+        Insert: {
+          attended?: boolean
+          created_at?: string
+          id?: string
+          patient_id?: string | null
+          patient_name?: string | null
+          payment_status?: string
+          price_charged?: number
+          treatment_done?: string | null
+          treatment_notes?: string | null
+          visit_id: string
+        }
+        Update: {
+          attended?: boolean
+          created_at?: string
+          id?: string
+          patient_id?: string | null
+          patient_name?: string | null
+          payment_status?: string
+          price_charged?: number
+          treatment_done?: string | null
+          treatment_notes?: string | null
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visit_patients_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_patients_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      visits: {
+        Row: {
+          center_id: string | null
+          created_at: string
+          end_time: string | null
+          estimated_net_amount: number
+          general_notes: string | null
+          gross_amount: number
+          id: string
+          irpf_percentage: number
+          material_cost: number
+          material_notes: string | null
+          other_expenses: number
+          patients_count: number
+          start_time: string | null
+          status: string
+          travel_cost: number
+          updated_at: string
+          user_id: string
+          vat_mode: string
+          vat_percentage: number
+          visit_date: string
+        }
+        Insert: {
+          center_id?: string | null
+          created_at?: string
+          end_time?: string | null
+          estimated_net_amount?: number
+          general_notes?: string | null
+          gross_amount?: number
+          id?: string
+          irpf_percentage?: number
+          material_cost?: number
+          material_notes?: string | null
+          other_expenses?: number
+          patients_count?: number
+          start_time?: string | null
+          status?: string
+          travel_cost?: number
+          updated_at?: string
+          user_id: string
+          vat_mode?: string
+          vat_percentage?: number
+          visit_date: string
+        }
+        Update: {
+          center_id?: string | null
+          created_at?: string
+          end_time?: string | null
+          estimated_net_amount?: number
+          general_notes?: string | null
+          gross_amount?: number
+          id?: string
+          irpf_percentage?: number
+          material_cost?: number
+          material_notes?: string | null
+          other_expenses?: number
+          patients_count?: number
+          start_time?: string | null
+          status?: string
+          travel_cost?: number
+          updated_at?: string
+          user_id?: string
+          vat_mode?: string
+          vat_percentage?: number
+          visit_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visits_center_id_fkey"
+            columns: ["center_id"]
+            isOneToOne: false
+            referencedRelation: "centers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
