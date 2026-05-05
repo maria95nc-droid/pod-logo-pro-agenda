@@ -3,7 +3,10 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from "@/contexts/AuthContext";
+import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "@/components/AppLayout";
+import Auth from "@/pages/Auth";
 import Today from "@/pages/Today";
 import Agenda from "@/pages/Agenda";
 import Patients from "@/pages/Patients";
@@ -25,22 +28,25 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route path="/" element={<Today />} />
-            <Route path="/agenda" element={<Agenda />} />
-            <Route path="/pacientes" element={<Patients />} />
-            <Route path="/pacientes/nuevo" element={<NewPatient />} />
-            <Route path="/centros/nuevo" element={<NewCenter />} />
-            <Route path="/material" element={<MaterialPage />} />
-            <Route path="/material/nuevo" element={<NewMaterial />} />
-            <Route path="/finanzas" element={<Finance />} />
-            <Route path="/configuracion" element={<Settings />} />
-            <Route path="/visita/nueva" element={<NewVisit />} />
-            <Route path="/visita/:id" element={<VisitDetail />} />
-          </Route>
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/auth" element={<Auth />} />
+            <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+              <Route path="/" element={<Today />} />
+              <Route path="/agenda" element={<Agenda />} />
+              <Route path="/pacientes" element={<Patients />} />
+              <Route path="/pacientes/nuevo" element={<NewPatient />} />
+              <Route path="/centros/nuevo" element={<NewCenter />} />
+              <Route path="/material" element={<MaterialPage />} />
+              <Route path="/material/nuevo" element={<NewMaterial />} />
+              <Route path="/finanzas" element={<Finance />} />
+              <Route path="/configuracion" element={<Settings />} />
+              <Route path="/visita/nueva" element={<NewVisit />} />
+              <Route path="/visita/:id" element={<VisitDetail />} />
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

@@ -9,7 +9,7 @@ interface MicButtonProps {
   hintIntent?: VoiceIntent;
   title?: string;
   exampleHint?: string;
-  onConfirm: (data: VoiceInterpretation, transcript: string) => void;
+  onConfirm?: (data: VoiceInterpretation, transcript: string) => void;
   /** Estilo: chip pequeño dentro de un formulario, o botón normal */
   variant?: "chip" | "button";
   label?: string;

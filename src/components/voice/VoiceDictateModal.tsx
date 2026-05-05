@@ -24,6 +24,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { parseVoiceLocal } from "@/lib/voiceParser";
 import { canUseAi, incrementAiUsage, loadVoiceSettings } from "@/lib/voiceSettings";
+import { saveVoiceInterpretation } from "@/lib/voiceSave";
+import { useInvalidateAll } from "@/hooks/useData";
+import { useNavigate } from "react-router-dom";
 import type { VoiceIntent, VoiceInterpretation } from "@/types/voice";
 
 interface VoiceDictateModalProps {
@@ -32,7 +35,10 @@ interface VoiceDictateModalProps {
   hintIntent?: VoiceIntent;
   title?: string;
   exampleHint?: string;
-  onConfirm: (interpretation: VoiceInterpretation, transcript: string) => void;
+  /** Opcional: si se pasa, se llama además del guardado por defecto. */
+  onConfirm?: (interpretation: VoiceInterpretation, transcript: string) => void;
+  /** Si false, NO guarda en backend (solo dispara onConfirm) */
+  autoSave?: boolean;
 }
 
 type Phase = "draft" | "review" | "interpreting";
@@ -44,12 +50,16 @@ export function VoiceDictateModal({
   title = "Dictado por voz",
   exampleHint,
   onConfirm,
+  autoSave = true,
 }: VoiceDictateModalProps) {
   const [phase, setPhase] = useState<Phase>("draft");
   const [editableTranscript, setEditableTranscript] = useState("");
   const [interpretation, setInterpretation] = useState<VoiceInterpretation | null>(null);
   const [askAi, setAskAi] = useState(false);
+  const [saving, setSaving] = useState(false);
   const settings = useMemo(() => loadVoiceSettings(), [open]);
+  const invalidateAll = useInvalidateAll();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (open) {
@@ -57,6 +67,7 @@ export function VoiceDictateModal({
       setEditableTranscript("");
       setInterpretation(null);
       setAskAi(false);
+      setSaving(false);
     }
   }, [open]);
 
@@ -104,13 +115,33 @@ export function VoiceDictateModal({
     }
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!interpretation) {
       toast.message("Pulsa Detectar datos antes de confirmar.");
       return;
     }
-    onConfirm(interpretation, editableTranscript);
-    onOpenChange(false);
+    if (autoSave) {
+      setSaving(true);
+      try {
+        const result = await saveVoiceInterpretation(interpretation);
+        if (!result.ok) {
+          toast.error(result.message);
+          setSaving(false);
+          return;
+        }
+        toast.success(result.message);
+        invalidateAll();
+        onConfirm?.(interpretation, editableTranscript);
+        onOpenChange(false);
+        if (result.redirect) navigate(result.redirect);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Error al guardar");
+        setSaving(false);
+      }
+    } else {
+      onConfirm?.(interpretation, editableTranscript);
+      onOpenChange(false);
+    }
   };
 
   return (
@@ -207,8 +238,8 @@ export function VoiceDictateModal({
                   <Button variant="ghost" size="sm" onClick={() => setPhase("draft")}>
                     <X className="h-4 w-4" /> Cancelar
                   </Button>
-                  <Button size="sm" onClick={handleConfirm}>
-                    <Check className="h-4 w-4" /> Confirmar
+                  <Button size="sm" onClick={handleConfirm} disabled={saving}>
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmar
                   </Button>
                 </div>
               </div>

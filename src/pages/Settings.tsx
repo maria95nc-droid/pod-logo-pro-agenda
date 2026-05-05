@@ -5,7 +5,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { fiscalSettings as initial } from "@/data/mock";
+const initial = {
+  defaultIrpfPercentage: 7,
+  defaultVatMode: "Exento" as const,
+  monthlySelfEmployedFee: 310,
+  monthlyFixedExpenses: 150,
+  defaultTravelCost: 8,
+  applyTravelPerVisit: true,
+  applySelfEmployedFee: true,
+  feeDistributionMethod: "por_dia" as const,
+};
 import { toast } from "sonner";
 import { Save, AlertCircle, Mic, Sparkles } from "lucide-react";
 import {

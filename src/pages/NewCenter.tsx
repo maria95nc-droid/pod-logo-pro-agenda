@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,22 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
-import { MicButton } from "@/components/voice/MicButton";
-import { consumeVoicePrefill } from "@/components/voice/FloatingVoiceButton";
-import type { CenterType } from "@/types";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useInvalidateAll } from "@/hooks/useData";
 
-const TYPE_MAP: Record<string, CenterType> = {
-  residencia: "Residencia",
-  centro_dia: "Centro de día",
-  domicilio: "Domicilio",
-};
+const TYPES = ["Residencia", "Centro de día", "Domicilio", "Clínica propia", "Otro"] as const;
 
 export default function NewCenter() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const invalidate = useInvalidateAll();
+  const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
-  const [type, setType] = useState<CenterType>("Residencia");
+  const [type, setType] = useState<string>("Residencia");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [contactPerson, setContactPerson] = useState("");
@@ -29,38 +28,33 @@ export default function NewCenter() {
   const [price, setPrice] = useState<number | "">("");
   const [notes, setNotes] = useState("");
 
-  // Pre-rellenar desde el botón flotante de voz
-  useEffect(() => {
-    const pre = consumeVoicePrefill();
-    if (pre?.intent === "centro" && pre.center) applyVoice(pre.center);
-  }, []);
-
-  const applyVoice = (c: NonNullable<ReturnType<typeof consumeVoicePrefill>>["center"]) => {
-    if (!c) return;
-    if (c.name) setName(c.name);
-    if (c.type && TYPE_MAP[c.type]) setType(TYPE_MAP[c.type]);
-    if (c.address) setAddress(c.address);
-    if (c.city) setCity(c.city);
-    if (c.contactName) setContactPerson(c.contactName);
-    if (c.contactPhone) setContactPhone(c.contactPhone);
-    if (typeof c.defaultPricePerPatient === "number") setPrice(c.defaultPricePerPatient);
-    if (c.notes) setNotes(c.notes);
-    toast.success("Datos rellenados desde el dictado");
+  const handleSave = async () => {
+    if (!user) return;
+    if (!name.trim()) return toast.error("Falta el nombre del centro");
+    setBusy(true);
+    const { error } = await supabase.from("centers").insert({
+      user_id: user.id,
+      name: name.trim(),
+      type,
+      address: address || null,
+      city: city || null,
+      contact_person: contactPerson || null,
+      contact_phone: contactPhone || null,
+      default_price_per_patient: price === "" ? null : price,
+      notes: notes || null,
+    });
+    setBusy(false);
+    if (error) return toast.error(error.message);
+    toast.success("Centro creado");
+    invalidate();
+    navigate("/pacientes");
   };
 
   return (
     <div className="space-y-4 pb-8 animate-fade-in">
       <div className="flex items-center gap-2">
-        <Button size="icon" variant="ghost" asChild>
-          <Link to="/pacientes"><ArrowLeft className="h-4 w-4" /></Link>
-        </Button>
+        <Button size="icon" variant="ghost" asChild><Link to="/pacientes"><ArrowLeft className="h-4 w-4" /></Link></Button>
         <h1 className="flex-1 text-2xl font-bold">Nuevo centro</h1>
-        <MicButton
-          hintIntent="centro"
-          title="Dictar centro"
-          exampleHint='Ej.: "Añadir residencia Los Olivos en Calle Mayor 25, contacto Marta, teléfono 600123123, precio por paciente 35 euros."'
-          onConfirm={(d) => applyVoice(d.center)}
-        />
       </div>
 
       <Card>
@@ -71,14 +65,10 @@ export default function NewCenter() {
           </div>
           <div className="space-y-1.5">
             <Label>Tipo</Label>
-            <Select value={type} onValueChange={(v) => setType(v as CenterType)}>
+            <Select value={type} onValueChange={setType}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="Residencia">Residencia</SelectItem>
-                <SelectItem value="Centro de día">Centro de día</SelectItem>
-                <SelectItem value="Domicilio">Domicilio</SelectItem>
-                <SelectItem value="Clínica propia">Clínica propia</SelectItem>
-                <SelectItem value="Otro">Otro</SelectItem>
+                {TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -93,12 +83,7 @@ export default function NewCenter() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="price">Precio/paciente</Label>
-              <Input
-                id="price"
-                type="number"
-                value={price}
-                onChange={(e) => setPrice(e.target.value === "" ? "" : +e.target.value)}
-              />
+              <Input id="price" type="number" value={price} onChange={(e) => setPrice(e.target.value === "" ? "" : +e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -118,16 +103,8 @@ export default function NewCenter() {
         </CardContent>
       </Card>
 
-      <Button
-        className="w-full"
-        size="lg"
-        onClick={() => {
-          if (!name.trim()) return toast.error("Falta el nombre del centro");
-          toast.success("Centro creado");
-          navigate("/pacientes");
-        }}
-      >
-        <Save className="h-4 w-4" /> Guardar centro
+      <Button className="w-full" size="lg" onClick={handleSave} disabled={busy}>
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar centro
       </Button>
     </div>
   );

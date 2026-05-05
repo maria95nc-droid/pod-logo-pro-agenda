@@ -1,7 +1,8 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { Calendar, Home, Users, Package, Wallet, Settings } from "lucide-react";
+import { Calendar, Home, Users, Package, Wallet, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FloatingVoiceButton } from "@/components/voice/FloatingVoiceButton";
+import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { to: "/", label: "Hoy", icon: Home, end: true },
@@ -13,6 +14,7 @@ const navItems = [
 
 export default function AppLayout() {
   const location = useLocation();
+  const { signOut } = useAuth();
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
@@ -27,16 +29,25 @@ export default function AppLayout() {
               <p className="text-[11px] text-muted-foreground">Gestión personal</p>
             </div>
           </div>
-          <NavLink
-            to="/configuracion"
-            className={cn(
-              "inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-smooth hover:bg-muted hover:text-foreground",
-              location.pathname === "/configuracion" && "bg-muted text-foreground"
-            )}
-            aria-label="Configuración"
-          >
-            <Settings className="h-4 w-4" />
-          </NavLink>
+          <div className="flex items-center gap-1">
+            <NavLink
+              to="/configuracion"
+              className={cn(
+                "inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-smooth hover:bg-muted hover:text-foreground",
+                location.pathname === "/configuracion" && "bg-muted text-foreground"
+              )}
+              aria-label="Configuración"
+            >
+              <Settings className="h-4 w-4" />
+            </NavLink>
+            <button
+              onClick={() => signOut()}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-smooth hover:bg-muted hover:text-foreground"
+              aria-label="Cerrar sesión"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </header>
 

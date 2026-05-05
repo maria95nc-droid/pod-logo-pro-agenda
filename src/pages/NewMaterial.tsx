@@ -1,16 +1,20 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
-import { MicButton } from "@/components/voice/MicButton";
-import { consumeVoicePrefill } from "@/components/voice/FloatingVoiceButton";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useInvalidateAll } from "@/hooks/useData";
 
 export default function NewMaterial() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const invalidate = useInvalidateAll();
+  const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
   const [stock, setStock] = useState<number | "">("");
   const [minStock, setMinStock] = useState<number | "">("");
@@ -18,35 +22,31 @@ export default function NewMaterial() {
   const [unit, setUnit] = useState("ud");
   const [unitCost, setUnitCost] = useState<number | "">("");
 
-  useEffect(() => {
-    const pre = consumeVoicePrefill();
-    if (pre?.intent === "material" && pre.material) applyVoice(pre.material);
-  }, []);
-
-  const applyVoice = (m: NonNullable<ReturnType<typeof consumeVoicePrefill>>["material"]) => {
-    if (!m) return;
-    if (m.name) setName(m.name);
-    if (typeof m.currentStock === "number") setStock(m.currentStock);
-    if (typeof m.minimumStock === "number") setMinStock(m.minimumStock);
-    if (m.category) setCategory(m.category);
-    if (m.unit) setUnit(m.unit);
-    if (typeof m.unitCost === "number") setUnitCost(m.unitCost);
-    toast.success("Datos rellenados desde el dictado");
+  const handleSave = async () => {
+    if (!user) return;
+    if (!name.trim()) return toast.error("Falta el nombre del material");
+    setBusy(true);
+    const { error } = await supabase.from("materials").insert({
+      user_id: user.id,
+      name: name.trim(),
+      category: category || "Otros",
+      current_stock: stock === "" ? 0 : stock,
+      minimum_stock: minStock === "" ? 0 : minStock,
+      unit: unit || "ud",
+      estimated_unit_cost: unitCost === "" ? null : unitCost,
+    });
+    setBusy(false);
+    if (error) return toast.error(error.message);
+    toast.success("Material añadido");
+    invalidate();
+    navigate("/material");
   };
 
   return (
     <div className="space-y-4 pb-8 animate-fade-in">
       <div className="flex items-center gap-2">
-        <Button size="icon" variant="ghost" asChild>
-          <Link to="/material"><ArrowLeft className="h-4 w-4" /></Link>
-        </Button>
+        <Button size="icon" variant="ghost" asChild><Link to="/material"><ArrowLeft className="h-4 w-4" /></Link></Button>
         <h1 className="flex-1 text-2xl font-bold">Nuevo material</h1>
-        <MicButton
-          hintIntent="material"
-          title="Dictar material"
-          exampleHint='Ej.: "Añadir material guantes nitrilo, stock 50, mínimo 10, categoría protección."'
-          onConfirm={(d) => applyVoice(d.material)}
-        />
       </div>
 
       <Card>
@@ -80,16 +80,8 @@ export default function NewMaterial() {
         </CardContent>
       </Card>
 
-      <Button
-        className="w-full"
-        size="lg"
-        onClick={() => {
-          if (!name.trim()) return toast.error("Falta el nombre del material");
-          toast.success("Material añadido");
-          navigate("/material");
-        }}
-      >
-        <Save className="h-4 w-4" /> Guardar material
+      <Button className="w-full" size="lg" onClick={handleSave} disabled={busy}>
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar material
       </Button>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,70 +7,37 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { centers, patients, fiscalSettings } from "@/data/mock";
 import { formatEUR } from "@/lib/format";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Users } from "lucide-react";
-import { MicButton } from "@/components/voice/MicButton";
-import { consumeVoicePrefill } from "@/components/voice/FloatingVoiceButton";
-import type { VoiceInterpretation } from "@/types/voice";
+import { ArrowLeft, Loader2, Save, Users } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useCenters, usePatients, useInvalidateAll } from "@/hooks/useData";
+
+const IRPF = 7;
+const DEFAULT_TRAVEL = 8;
 
 export default function NewVisit() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { data: centers = [] } = useCenters();
+  const { data: patients = [] } = usePatients();
+  const invalidate = useInvalidateAll();
+  const [busy, setBusy] = useState(false);
   const [centerId, setCenterId] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("12:00");
   const [selectedPatients, setSelectedPatients] = useState<Record<string, number>>({});
-  const [travel, setTravel] = useState(fiscalSettings.defaultTravelCost);
+  const [travel, setTravel] = useState(DEFAULT_TRAVEL);
   const [materialCost, setMaterialCost] = useState(0);
   const [notes, setNotes] = useState("");
 
-  const applyVoice = (data: VoiceInterpretation) => {
-    const v = data.visit;
-    if (!v) return;
-    if (v.date) setDate(v.date);
-    if (v.startTime) setStart(v.startTime);
-    if (v.endTime) setEnd(v.endTime);
-    let resolvedCenterId = centerId;
-    if (v.centerName) {
-      const found = centers.find((c) =>
-        c.name.toLowerCase().includes(v.centerName!.toLowerCase()),
-      );
-      if (found) {
-        resolvedCenterId = found.id;
-        setCenterId(found.id);
-      }
-    }
-    if (v.patientNames?.length) {
-      const matches: Record<string, number> = {};
-      const pool = resolvedCenterId
-        ? patients.filter((p) => p.centerId === resolvedCenterId)
-        : patients;
-      v.patientNames.forEach((name) => {
-        const p = pool.find((x) => x.fullName.toLowerCase().includes(name.toLowerCase()));
-        if (p) matches[p.id] = v.pricePerPatient ?? p.defaultPrice ?? 18;
-      });
-      if (Object.keys(matches).length) setSelectedPatients(matches);
-    }
-    if (typeof v.travelCost === "number") setTravel(v.travelCost);
-    if (typeof v.materialCost === "number") setMaterialCost(v.materialCost);
-    if (v.notes) setNotes(v.notes);
-    toast.success("Visita rellenada desde el dictado");
-  };
-
-  // Pre-rellenar desde el botón flotante
-  useEffect(() => {
-    const pre = consumeVoicePrefill();
-    if (pre?.intent === "visita") applyVoice(pre);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const centerPatients = patients.filter((p) => p.centerId === centerId);
+  const centerPatients = patients.filter((p) => p.center_id === centerId);
 
   const { gross, irpf, net } = useMemo(() => {
     const gross = Object.values(selectedPatients).reduce((a, b) => a + (b || 0), 0);
-    const irpf = (gross * fiscalSettings.defaultIrpfPercentage) / 100;
+    const irpf = (gross * IRPF) / 100;
     const net = gross - irpf - travel - materialCost;
     return { gross, irpf, net };
   }, [selectedPatients, travel, materialCost]);
@@ -84,17 +51,55 @@ export default function NewVisit() {
     });
   };
 
+  const handleSave = async () => {
+    if (!user) return;
+    if (!centerId) return toast.error("Selecciona un centro");
+    setBusy(true);
+    const ids = Object.keys(selectedPatients);
+    const { data: visit, error } = await supabase.from("visits").insert({
+      user_id: user.id,
+      center_id: centerId,
+      visit_date: date,
+      start_time: start,
+      end_time: end,
+      status: "Programada",
+      gross_amount: gross,
+      irpf_percentage: IRPF,
+      travel_cost: travel,
+      material_cost: materialCost,
+      estimated_net_amount: net,
+      patients_count: ids.length,
+      general_notes: notes || null,
+    }).select("id").single();
+    if (error || !visit) {
+      setBusy(false);
+      return toast.error(error?.message ?? "Error");
+    }
+    if (ids.length > 0) {
+      const rows = ids.map((id) => {
+        const p = patients.find((x) => x.id === id);
+        return {
+          visit_id: visit.id,
+          patient_id: id,
+          patient_name: p?.full_name ?? null,
+          price_charged: selectedPatients[id],
+          payment_status: "Pendiente",
+          attended: true,
+        };
+      });
+      await supabase.from("visit_patients").insert(rows);
+    }
+    setBusy(false);
+    toast.success("Visita creada");
+    invalidate();
+    navigate("/agenda");
+  };
+
   return (
     <div className="space-y-4 pb-8">
       <div className="flex items-center gap-2">
         <Button size="icon" variant="ghost" asChild><Link to="/"><ArrowLeft className="h-4 w-4" /></Link></Button>
         <h1 className="flex-1 text-2xl font-bold">Nueva visita</h1>
-        <MicButton
-          hintIntent="visita"
-          title="Dictar visita"
-          exampleHint='Ej.: "Añadir visita mañana a las 9:30 en Los Olivos hasta las 13:00, con María García y Antonio Pérez, precio 35 euros, desplazamiento 8 euros."'
-          onConfirm={applyVoice}
-        />
       </div>
 
       <Card>
@@ -110,7 +115,6 @@ export default function NewVisit() {
               </SelectContent>
             </Select>
           </div>
-
           <div className="grid grid-cols-3 gap-2">
             <div className="space-y-1.5 col-span-3">
               <Label htmlFor="d">Fecha</Label>
@@ -139,12 +143,13 @@ export default function NewVisit() {
             <div className="space-y-1.5">
               {centerPatients.map((p) => {
                 const checked = selectedPatients[p.id] !== undefined;
+                const defaultPrice = Number(p.default_price ?? 18);
                 return (
                   <label key={p.id} className="flex items-center gap-3 rounded-lg border border-border p-2.5 transition-smooth hover:bg-muted/50 cursor-pointer">
-                    <Checkbox checked={checked} onCheckedChange={() => togglePatient(p.id, p.defaultPrice ?? 18)} />
+                    <Checkbox checked={checked} onCheckedChange={() => togglePatient(p.id, defaultPrice)} />
                     <div className="flex-1">
-                      <p className="text-sm font-medium">{p.fullName}</p>
-                      <p className="text-[11px] text-muted-foreground">{p.usualTreatment}</p>
+                      <p className="text-sm font-medium">{p.full_name}</p>
+                      <p className="text-[11px] text-muted-foreground">{p.usual_treatment}</p>
                     </div>
                     {checked && (
                       <Input
@@ -186,14 +191,14 @@ export default function NewVisit() {
       <Card className="bg-primary-soft border-primary/20">
         <CardContent className="p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span>Bruto</span><span className="font-semibold">{formatEUR(gross)}</span></div>
-          <div className="flex justify-between text-muted-foreground"><span>IRPF ({fiscalSettings.defaultIrpfPercentage}%)</span><span>−{formatEUR(irpf)}</span></div>
+          <div className="flex justify-between text-muted-foreground"><span>IRPF ({IRPF}%)</span><span>−{formatEUR(irpf)}</span></div>
           <div className="flex justify-between text-muted-foreground"><span>Desplazamiento + material</span><span>−{formatEUR(travel + materialCost)}</span></div>
           <div className="flex justify-between border-t border-primary/20 pt-2 text-base font-bold text-primary"><span>Neto estimado</span><span>{formatEUR(net)}</span></div>
         </CardContent>
       </Card>
 
-      <Button className="w-full" size="lg" onClick={() => { toast.success("Visita creada"); navigate("/"); }}>
-        <Save className="h-4 w-4" /> Guardar visita
+      <Button className="w-full" size="lg" onClick={handleSave} disabled={busy}>
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar visita
       </Button>
     </div>
   );
