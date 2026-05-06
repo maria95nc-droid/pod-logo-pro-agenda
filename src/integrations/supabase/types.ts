@@ -17,51 +17,69 @@ export type Database = {
       centers: {
         Row: {
           address: string | null
+          billing_notes: string | null
           city: string | null
           contact_person: string | null
           contact_phone: string | null
           created_at: string
           default_price_per_patient: number | null
+          email: string | null
           id: string
           is_active: boolean
+          material_notes: string | null
           name: string
           notes: string | null
+          payment_method: string | null
+          postal_code: string | null
           type: string
           updated_at: string
           user_id: string
           usual_schedule: string | null
+          visit_frequency: string | null
         }
         Insert: {
           address?: string | null
+          billing_notes?: string | null
           city?: string | null
           contact_person?: string | null
           contact_phone?: string | null
           created_at?: string
           default_price_per_patient?: number | null
+          email?: string | null
           id?: string
           is_active?: boolean
+          material_notes?: string | null
           name: string
           notes?: string | null
+          payment_method?: string | null
+          postal_code?: string | null
           type?: string
           updated_at?: string
           user_id: string
           usual_schedule?: string | null
+          visit_frequency?: string | null
         }
         Update: {
           address?: string | null
+          billing_notes?: string | null
           city?: string | null
           contact_person?: string | null
           contact_phone?: string | null
           created_at?: string
           default_price_per_patient?: number | null
+          email?: string | null
           id?: string
           is_active?: boolean
+          material_notes?: string | null
           name?: string
           notes?: string | null
+          payment_method?: string | null
+          postal_code?: string | null
           type?: string
           updated_at?: string
           user_id?: string
           usual_schedule?: string | null
+          visit_frequency?: string | null
         }
         Relationships: []
       }
@@ -169,6 +187,7 @@ export type Database = {
           last_visit_date: string | null
           next_visit_date: string | null
           patient_code: string | null
+          payment_status: string | null
           phone: string | null
           updated_at: string
           user_id: string
@@ -188,6 +207,7 @@ export type Database = {
           last_visit_date?: string | null
           next_visit_date?: string | null
           patient_code?: string | null
+          payment_status?: string | null
           phone?: string | null
           updated_at?: string
           user_id: string
@@ -207,6 +227,7 @@ export type Database = {
           last_visit_date?: string | null
           next_visit_date?: string | null
           patient_code?: string | null
+          payment_status?: string | null
           phone?: string | null
           updated_at?: string
           user_id?: string
