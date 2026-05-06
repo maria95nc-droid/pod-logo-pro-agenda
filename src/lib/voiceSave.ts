@@ -71,7 +71,7 @@ export async function saveVoiceInterpretation(d: VoiceInterpretation): Promise<S
         const found = await findCenterByName(p.centerName, userId);
         centerId = found?.id ?? null;
       }
-      const { error } = await supabase.from("patients").insert({
+      const { data: inserted, error } = await supabase.from("patients").insert({
         user_id: userId,
         center_id: centerId,
         full_name: p.fullName.trim(),
@@ -80,8 +80,41 @@ export async function saveVoiceInterpretation(d: VoiceInterpretation): Promise<S
         next_visit_date: p.nextVisitDate || null,
         important_warnings: p.warnings ?? null,
         clinical_notes: p.notes ?? null,
-      });
+        phone: p.phone ?? null,
+      }).select("id").single();
       if (error) return { ok: false, message: error.message, invalidates: [] };
+
+      // Si además trae visita, creamos la visita programada vinculada
+      if (d.visit?.date) {
+        const v = d.visit;
+        const pricePerPatient = v.pricePerPatient ?? p.defaultPrice ?? 0;
+        const patientsCount = 1;
+        const grossAmount = pricePerPatient * patientsCount;
+        const irpf = grossAmount * 0.07;
+        const net = grossAmount - irpf;
+        const { data: visit } = await supabase.from("visits").insert({
+          user_id: userId,
+          center_id: centerId,
+          visit_date: v.date,
+          start_time: v.startTime ?? p.nextVisitTime ?? null,
+          status: "Programada",
+          gross_amount: grossAmount,
+          irpf_percentage: 7,
+          estimated_net_amount: net,
+          patients_count: patientsCount,
+        }).select("id").single();
+        if (visit) {
+          await supabase.from("visit_patients").insert({
+            visit_id: visit.id,
+            patient_id: inserted?.id ?? null,
+            patient_name: p.fullName.trim(),
+            price_charged: pricePerPatient,
+            payment_status: "Pendiente",
+            attended: true,
+          });
+        }
+        return { ok: true, message: "Paciente y visita creados", invalidates: ["patients", "visits"], redirect: "/pacientes" };
+      }
       return { ok: true, message: "Paciente creado", invalidates: ["patients"], redirect: "/pacientes" };
     }
 
