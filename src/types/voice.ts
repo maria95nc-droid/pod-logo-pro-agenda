@@ -30,6 +30,8 @@ export interface VoicePatient {
   usualTreatment?: string;
   defaultPrice?: number;
   nextVisitDate?: string;
+  nextVisitTime?: string;
+  phone?: string;
   warnings?: string;
   notes?: string;
 }
