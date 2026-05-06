@@ -311,22 +311,72 @@ function EditableFields({
               onChange={(e) => onChange({
                 ...interpretation,
                 patient: { ...interpretation.patient, centerName: e.target.value },
+                visit: interpretation.visit
+                  ? { ...interpretation.visit, centerName: e.target.value }
+                  : interpretation.visit,
               })}
             />
           </Field>
-          <Field label="Precio">
-            <Input
-              type="number"
-              value={interpretation.patient?.defaultPrice ?? ""}
-              onChange={(e) => onChange({
-                ...interpretation,
-                patient: {
-                  ...interpretation.patient,
-                  defaultPrice: e.target.value === "" ? undefined : Number(e.target.value),
-                },
-              })}
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Próxima visita">
+              <Input
+                type="date"
+                value={interpretation.patient?.nextVisitDate ?? ""}
+                onChange={(e) => onChange({
+                  ...interpretation,
+                  patient: { ...interpretation.patient, nextVisitDate: e.target.value },
+                  visit: e.target.value
+                    ? {
+                        ...(interpretation.visit ?? {}),
+                        date: e.target.value,
+                        centerName: interpretation.patient?.centerName,
+                        pricePerPatient: interpretation.patient?.defaultPrice,
+                        patientNames: interpretation.patient?.fullName
+                          ? [interpretation.patient.fullName]
+                          : [],
+                      }
+                    : undefined,
+                })}
+              />
+            </Field>
+            <Field label="Hora">
+              <Input
+                type="time"
+                value={interpretation.patient?.nextVisitTime ?? ""}
+                onChange={(e) => onChange({
+                  ...interpretation,
+                  patient: { ...interpretation.patient, nextVisitTime: e.target.value },
+                  visit: interpretation.visit
+                    ? { ...interpretation.visit, startTime: e.target.value }
+                    : interpretation.visit,
+                })}
+              />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Precio">
+              <Input
+                type="number"
+                value={interpretation.patient?.defaultPrice ?? ""}
+                onChange={(e) => onChange({
+                  ...interpretation,
+                  patient: {
+                    ...interpretation.patient,
+                    defaultPrice: e.target.value === "" ? undefined : Number(e.target.value),
+                  },
+                })}
+              />
+            </Field>
+            <Field label="Teléfono">
+              <Input
+                value={interpretation.patient?.phone ?? ""}
+                onChange={(e) => onChange({
+                  ...interpretation,
+                  patient: { ...interpretation.patient, phone: e.target.value },
+                })}
+              />
+            </Field>
+          </div>
           <Field label="Tratamiento">
             <Input
               value={interpretation.patient?.usualTreatment ?? ""}
@@ -336,6 +386,29 @@ function EditableFields({
               })}
             />
           </Field>
+          {interpretation.visit?.date && (
+            <label className="mt-1 flex items-center gap-2 rounded-md border border-primary/20 bg-primary-soft/40 p-2 text-xs">
+              <input
+                type="checkbox"
+                checked={!!interpretation.visit}
+                onChange={(e) => onChange({
+                  ...interpretation,
+                  visit: e.target.checked
+                    ? {
+                        date: interpretation.patient?.nextVisitDate,
+                        startTime: interpretation.patient?.nextVisitTime,
+                        centerName: interpretation.patient?.centerName,
+                        pricePerPatient: interpretation.patient?.defaultPrice,
+                        patientNames: interpretation.patient?.fullName
+                          ? [interpretation.patient.fullName]
+                          : [],
+                      }
+                    : undefined,
+                })}
+              />
+              Crear también la visita programada para esta fecha
+            </label>
+          )}
         </div>
       );
     case "centro":
