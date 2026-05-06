@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Search, Phone, MapPin, AlertTriangle, Building2 } from "lucide-react";
+import { Plus, Search, Phone, MapPin, AlertTriangle, Building2, Pencil } from "lucide-react";
 import { MicButton } from "@/components/voice/MicButton";
 import { useCenters, usePatients } from "@/hooks/useData";
 
@@ -50,7 +50,7 @@ export default function Patients() {
             {filtered.map((p) => {
               const c = centers.find((x) => x.id === p.center_id);
               return (
-                <Card key={p.id} className="shadow-card transition-smooth hover:shadow-elevated">
+              <Card key={p.id} className="shadow-card transition-smooth hover:shadow-elevated">
                   <CardContent className="flex items-center gap-3 p-3.5">
                     <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary-soft font-semibold text-primary">
                       {p.full_name.split(" ").map((n) => n[0]).slice(0, 2).join("")}
@@ -66,8 +66,11 @@ export default function Patients() {
                       </div>
                       <p className="truncate text-xs text-muted-foreground">{c?.name ?? "Sin centro"} · {p.usual_treatment ?? "—"}</p>
                     </div>
-                    <div className="text-right text-xs">
-                      {p.default_price && <p className="font-semibold text-primary">{p.default_price}€</p>}
+                    <div className="flex items-center gap-1">
+                      {p.default_price && <span className="text-xs font-semibold text-primary">{p.default_price}€</span>}
+                      <Button asChild size="icon" variant="ghost" aria-label="Editar paciente">
+                        <Link to={`/pacientes/${p.id}/editar`}><Pencil className="h-4 w-4" /></Link>
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -87,7 +90,7 @@ export default function Patients() {
             {activeCenters.map((c) => {
               const count = patients.filter((p) => p.center_id === c.id).length;
               return (
-                <Card key={c.id} className="shadow-card transition-smooth hover:shadow-elevated">
+              <Card key={c.id} className="shadow-card transition-smooth hover:shadow-elevated">
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
@@ -100,10 +103,12 @@ export default function Patients() {
                           {c.contact_phone && <p className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{c.contact_phone}</p>}
                         </div>
                       </div>
-                      <div className="text-right text-xs">
-                        <p className="font-semibold">{count}</p>
-                        <p className="text-muted-foreground">pac.</p>
-                        {c.default_price_per_patient && <p className="mt-1 font-semibold text-primary">{c.default_price_per_patient}€</p>}
+                      <div className="flex flex-col items-end gap-1 text-xs">
+                        <p className="font-semibold">{count} pac.</p>
+                        {c.default_price_per_patient && <p className="font-semibold text-primary">{c.default_price_per_patient}€</p>}
+                        <Button asChild size="icon" variant="ghost" aria-label="Editar centro">
+                          <Link to={`/centros/${c.id}/editar`}><Pencil className="h-4 w-4" /></Link>
+                        </Button>
                       </div>
                     </div>
                   </CardContent>
