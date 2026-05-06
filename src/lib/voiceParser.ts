@@ -236,29 +236,28 @@ export function parseVoiceLocal(text: string): VoiceInterpretation {
       break;
     }
     case "paciente": {
-      interp.patient = {
-        fullName: extractPatientName(text),
-        centerName: extractCenterName(text),
-        usualTreatment: extractTreatmentSimple(text),
-        defaultPrice: extractEuros(text),
-        nextVisitDate: extractDate(text),
-        notes: undefined,
-      };
-      // Guardamos teléfono y hora como notas accesorias en warnings/notes
       const phone = extractPhone(text);
       const time = extractTime(text);
-      const extras: string[] = [];
-      if (phone) extras.push(`Tel: ${phone}`);
-      if (time) extras.push(`Hora prevista: ${time}`);
-      if (extras.length) interp.patient.notes = extras.join(" · ");
-      // Adjuntar también una visita potencial si tenemos fecha
-      if (interp.patient.nextVisitDate) {
+      const date = extractDate(text);
+      const centerName = extractCenterName(text);
+      const fullName = extractPatientName(text);
+      const price = extractEuros(text);
+      interp.patient = {
+        fullName,
+        centerName,
+        usualTreatment: extractTreatmentSimple(text),
+        defaultPrice: price,
+        nextVisitDate: date,
+        nextVisitTime: time,
+        phone,
+      };
+      if (date) {
         interp.visit = {
-          date: interp.patient.nextVisitDate,
+          date,
           startTime: time,
-          centerName: interp.patient.centerName,
-          pricePerPatient: interp.patient.defaultPrice,
-          patientNames: interp.patient.fullName ? [interp.patient.fullName] : [],
+          centerName,
+          pricePerPatient: price,
+          patientNames: fullName ? [fullName] : [],
         };
       }
       break;
