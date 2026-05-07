@@ -104,6 +104,61 @@ export function useExpenses() {
   });
 }
 
+// ============ User settings (profile) ============
+export interface UserSettings {
+  default_irpf_percentage: number;
+  default_vat_mode: "Exento" | "Con IVA" | "Configurable";
+  monthly_self_employed_fee: number;
+  monthly_fixed_expenses: number;
+  default_travel_cost: number;
+  apply_travel_per_visit: boolean;
+  apply_self_employed_fee: boolean;
+  apply_fixed_expenses: boolean;
+  fee_distribution_method: "por_dia" | "por_visita" | "por_ingreso";
+}
+
+export const defaultUserSettings: UserSettings = {
+  default_irpf_percentage: 15,
+  default_vat_mode: "Exento",
+  monthly_self_employed_fee: 0,
+  monthly_fixed_expenses: 0,
+  default_travel_cost: 0,
+  apply_travel_per_visit: false,
+  apply_self_employed_fee: false,
+  apply_fixed_expenses: false,
+  fee_distribution_method: "por_dia",
+};
+
+export function useUserSettings() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["user_settings"],
+    enabled: !!user,
+    queryFn: async (): Promise<UserSettings> => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(
+          "default_irpf_percentage, default_vat_mode, monthly_self_employed_fee, monthly_fixed_expenses, default_travel_cost, apply_travel_per_visit, apply_self_employed_fee, fee_distribution_method",
+        )
+        .eq("user_id", user!.id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return defaultUserSettings;
+      return {
+        default_irpf_percentage: Number(data.default_irpf_percentage ?? defaultUserSettings.default_irpf_percentage),
+        default_vat_mode: (data.default_vat_mode as UserSettings["default_vat_mode"]) ?? "Exento",
+        monthly_self_employed_fee: Number(data.monthly_self_employed_fee ?? 0),
+        monthly_fixed_expenses: Number(data.monthly_fixed_expenses ?? 0),
+        default_travel_cost: Number(data.default_travel_cost ?? 0),
+        apply_travel_per_visit: data.apply_travel_per_visit ?? false,
+        apply_self_employed_fee: data.apply_self_employed_fee ?? false,
+        apply_fixed_expenses: false,
+        fee_distribution_method: (data.fee_distribution_method as UserSettings["fee_distribution_method"]) ?? "por_dia",
+      };
+    },
+  });
+}
+
 // ============ Generic invalidate helpers ============
 export function useInvalidateAll() {
   const qc = useQueryClient();
@@ -113,5 +168,7 @@ export function useInvalidateAll() {
     qc.invalidateQueries({ queryKey: ["visits"] });
     qc.invalidateQueries({ queryKey: ["materials"] });
     qc.invalidateQueries({ queryKey: ["expenses"] });
+    qc.invalidateQueries({ queryKey: ["user_settings"] });
   };
 }
+

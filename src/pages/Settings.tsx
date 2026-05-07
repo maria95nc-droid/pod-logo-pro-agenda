@@ -16,6 +16,7 @@ import {
 } from "@/lib/voiceSettings";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useInvalidateAll } from "@/hooks/useData";
 
 type VatMode = "Exento" | "Con IVA" | "Configurable";
 type FeeMethod = "por_dia" | "por_visita" | "por_ingreso";
@@ -67,6 +68,7 @@ const sanitizeNumericInput = (raw: string): string => {
 
 export default function Settings() {
   const { user } = useAuth();
+  const invalidate = useInvalidateAll();
   const [form, setForm] = useState<SettingsForm>(defaultForm);
   const [voice, setVoice] = useState<VoiceSettings>(defaultVoiceSettings);
   const [usage, setUsage] = useState(() => getAiUsage());
@@ -156,6 +158,7 @@ export default function Settings() {
       return;
     }
     toast.success("Configuración guardada correctamente");
+    invalidate();
   };
 
   return (
