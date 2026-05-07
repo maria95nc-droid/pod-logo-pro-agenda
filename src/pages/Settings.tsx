@@ -16,6 +16,7 @@ import {
 } from "@/lib/voiceSettings";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useInvalidateAll } from "@/hooks/useData";
 
 type VatMode = "Exento" | "Con IVA" | "Configurable";
 type FeeMethod = "por_dia" | "por_visita" | "por_ingreso";
