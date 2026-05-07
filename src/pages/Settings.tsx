@@ -68,6 +68,7 @@ const sanitizeNumericInput = (raw: string): string => {
 
 export default function Settings() {
   const { user } = useAuth();
+  const invalidate = useInvalidateAll();
   const [form, setForm] = useState<SettingsForm>(defaultForm);
   const [voice, setVoice] = useState<VoiceSettings>(defaultVoiceSettings);
   const [usage, setUsage] = useState(() => getAiUsage());
