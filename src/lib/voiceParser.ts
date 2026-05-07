@@ -198,16 +198,22 @@ function cutAtStop(s: string): string | undefined {
 }
 
 function extractCenterName(text: string): string | undefined {
+  let name: string | undefined;
   let m = text.match(/\ben\s+(?:la\s+|el\s+)?(?:residencia|centro\s+de\s+día|centro|domicilio)\s+(.+)/i);
-  if (m) return cutAtStop(m[1]);
-  m = text.match(/\b(?:residencia|centro\s+de\s+día|centro|domicilio)\s+([A-ZÁÉÍÓÚÑ][\wáéíóúñ' -]{1,60})/);
-  if (m) return cutAtStop(m[1]);
-  return undefined;
+  if (m) name = cutAtStop(m[1]);
+  if (!name) {
+    m = text.match(/\b(?:residencia|centro\s+de\s+día|centro|domicilio)\s+([A-Za-zÁÉÍÓÚÑáéíóúñ][\wáéíóúñ' -]{1,60})/);
+    if (m) name = cutAtStop(m[1]);
+  }
+  return name ? titleCase(name) : undefined;
 }
 
 function extractTreatmentSimple(text: string): string | undefined {
-  const m = text.match(/\btratamiento\s+(.+)$/i);
-  return m?.[1]?.trim();
+  const m = text.match(/\btratamiento\b\s*(?:es\s+|:\s*)?(.+)$/i);
+  if (!m) return undefined;
+  let t = m[1].trim().replace(/[.;]+$/, "").trim();
+  t = t.replace(/^(?:es|el\s+tratamiento\s+es|tratamiento\s+es)\s+/i, "").trim();
+  return t || undefined;
 }
 
 function extractCenterType(text: string): "residencia" | "centro_dia" | "domicilio" | undefined {
