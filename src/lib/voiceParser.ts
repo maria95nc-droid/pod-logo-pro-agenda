@@ -128,20 +128,35 @@ function extractDate(text: string): string | undefined {
 }
 
 function extractPhone(text: string): string | undefined {
-  // Dígitos juntos
-  const m = text.match(/(?:tel[eé]fono|m[oó]vil|n[uú]mero(?:\s+es)?)\s*[:\-]?\s*([\d\s]{6,})/i);
+  const KEY = "(?:n[uú]mero\\s+de\\s+tel[eé]fono|n[uú]mero\\s+de\\s+m[oó]vil|tel[eé]fono|m[oó]vil|n[uú]mero)";
+  // Dígitos juntos (admite -, espacios, puntos)
+  const reDigits = new RegExp(`${KEY}\\s*(?:es|:)?\\s*([\\d][\\d\\s.\\-]{5,})`, "i");
+  const m = text.match(reDigits);
   if (m) {
     const digits = m[1].replace(/\D/g, "");
     if (digits.length >= 6) return digits;
   }
   // Dígitos dictados con palabras
-  const m2 = text.match(/(?:tel[eé]fono|m[oó]vil|n[uú]mero(?:\s+es)?)\s+((?:(?:cero|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)[\s,.-]+){5,})((?:cero|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve))/i);
+  const reWords = new RegExp(
+    `${KEY}\\s*(?:es|:)?\\s+((?:(?:cero|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)[\\s,.\\-]+){5,}(?:cero|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve))`,
+    "i",
+  );
+  const m2 = text.match(reWords);
   if (m2) {
-    const seq = (m2[1] + m2[2]).toLowerCase().split(/[\s,.-]+/).filter(Boolean);
+    const seq = m2[1].toLowerCase().split(/[\s,.\-]+/).filter(Boolean);
     const digits = seq.map((w) => SINGLE_DIGIT_WORDS[w] ?? "").join("");
     if (digits.length >= 6) return digits;
   }
   return undefined;
+}
+
+function titleCase(s: string): string {
+  return s
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ")
+    .trim();
 }
 
 function detectIntent(text: string): VoiceIntent {
@@ -183,16 +198,22 @@ function cutAtStop(s: string): string | undefined {
 }
 
 function extractCenterName(text: string): string | undefined {
+  let name: string | undefined;
   let m = text.match(/\ben\s+(?:la\s+|el\s+)?(?:residencia|centro\s+de\s+día|centro|domicilio)\s+(.+)/i);
-  if (m) return cutAtStop(m[1]);
-  m = text.match(/\b(?:residencia|centro\s+de\s+día|centro|domicilio)\s+([A-ZÁÉÍÓÚÑ][\wáéíóúñ' -]{1,60})/);
-  if (m) return cutAtStop(m[1]);
-  return undefined;
+  if (m) name = cutAtStop(m[1]);
+  if (!name) {
+    m = text.match(/\b(?:residencia|centro\s+de\s+día|centro|domicilio)\s+([A-Za-zÁÉÍÓÚÑáéíóúñ][\wáéíóúñ' -]{1,60})/);
+    if (m) name = cutAtStop(m[1]);
+  }
+  return name ? titleCase(name) : undefined;
 }
 
 function extractTreatmentSimple(text: string): string | undefined {
-  const m = text.match(/\btratamiento\s+(.+)$/i);
-  return m?.[1]?.trim();
+  const m = text.match(/\btratamiento\b\s*(?:es\s+|:\s*)?(.+)$/i);
+  if (!m) return undefined;
+  let t = m[1].trim().replace(/[.;]+$/, "").trim();
+  t = t.replace(/^(?:es|el\s+tratamiento\s+es|tratamiento\s+es)\s+/i, "").trim();
+  return t || undefined;
 }
 
 function extractCenterType(text: string): "residencia" | "centro_dia" | "domicilio" | undefined {
