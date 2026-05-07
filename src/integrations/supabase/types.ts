@@ -245,23 +245,47 @@ export type Database = {
       }
       profiles: {
         Row: {
+          apply_self_employed_fee: boolean | null
+          apply_travel_per_visit: boolean | null
           created_at: string
+          default_irpf_percentage: number | null
+          default_travel_cost: number | null
+          default_vat_mode: string | null
           display_name: string | null
+          fee_distribution_method: string | null
           id: string
+          monthly_fixed_expenses: number | null
+          monthly_self_employed_fee: number | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          apply_self_employed_fee?: boolean | null
+          apply_travel_per_visit?: boolean | null
           created_at?: string
+          default_irpf_percentage?: number | null
+          default_travel_cost?: number | null
+          default_vat_mode?: string | null
           display_name?: string | null
+          fee_distribution_method?: string | null
           id?: string
+          monthly_fixed_expenses?: number | null
+          monthly_self_employed_fee?: number | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          apply_self_employed_fee?: boolean | null
+          apply_travel_per_visit?: boolean | null
           created_at?: string
+          default_irpf_percentage?: number | null
+          default_travel_cost?: number | null
+          default_vat_mode?: string | null
           display_name?: string | null
+          fee_distribution_method?: string | null
           id?: string
+          monthly_fixed_expenses?: number | null
+          monthly_self_employed_fee?: number | null
           updated_at?: string
           user_id?: string
         }
