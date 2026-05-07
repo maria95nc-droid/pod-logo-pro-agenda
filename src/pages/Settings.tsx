@@ -158,6 +158,7 @@ export default function Settings() {
       return;
     }
     toast.success("Configuración guardada correctamente");
+    invalidate();
   };
 
   return (
