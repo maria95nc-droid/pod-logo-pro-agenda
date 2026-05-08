@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCenters, useInvalidateAll } from "@/hooks/useData";
+import { syncPatientNextVisit, removePatientFromFutureVisits } from "@/lib/patientVisitSync";
 
 const PAYMENT_STATUSES = ["Pendiente", "Cobrado", "Incluido en factura", "No cobra", "Revisar"] as const;
 
