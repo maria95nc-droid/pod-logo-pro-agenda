@@ -35,6 +35,7 @@ export default function NewPatient() {
   const [defaultPrice, setDefaultPrice] = useState<number | "">("");
   const [lastVisitDate, setLastVisitDate] = useState("");
   const [nextVisitDate, setNextVisitDate] = useState("");
+  const [nextVisitTime, setNextVisitTime] = useState("");
   const [warnings, setWarnings] = useState("");
   const [allergies, setAllergies] = useState("");
   const [notes, setNotes] = useState("");
