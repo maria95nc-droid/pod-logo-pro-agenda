@@ -57,6 +57,7 @@ export default function NewPatient() {
       setDefaultPrice(data.default_price ?? "");
       setLastVisitDate(data.last_visit_date ?? "");
       setNextVisitDate(data.next_visit_date ?? "");
+      setNextVisitTime((data as any).next_visit_time ?? "");
       setWarnings(data.important_warnings ?? "");
       setAllergies(data.allergies ?? "");
       setNotes(data.clinical_notes ?? "");
