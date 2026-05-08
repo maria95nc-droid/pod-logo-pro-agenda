@@ -158,6 +158,7 @@ export default function Finance() {
             </CardContent>
           </Card>
 
+          <MetricRow icon={<Wallet className="h-4 w-4" />} label="Cobrado este mes" value={formatEUR(calc.paid)} accent="info" />
           <MetricRow icon={<TrendingUp className="h-4 w-4" />} label="Ganancia media por visita" value={calc.monthVisits.length ? formatEUR(calc.net / calc.monthVisits.length) : "—"} />
           <MetricRow icon={<Clock className="h-4 w-4" />} label="Pendiente de cobro" value={formatEUR(calc.pendingAmount)} accent="warning" />
           <MetricRow icon={<FileText className="h-4 w-4" />} label="Pendiente de facturar" value={formatEUR(calc.toInvoice)} accent="info" />
