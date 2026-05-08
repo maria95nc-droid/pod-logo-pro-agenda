@@ -43,6 +43,7 @@ const App = () => (
               <Route path="/material" element={<MaterialPage />} />
               <Route path="/material/nuevo" element={<NewMaterial />} />
               <Route path="/finanzas" element={<Finance />} />
+              <Route path="/exportar" element={<Exports />} />
               <Route path="/configuracion" element={<Settings />} />
               <Route path="/visita/nueva" element={<NewVisit />} />
               <Route path="/visita/:id" element={<VisitDetail />} />
