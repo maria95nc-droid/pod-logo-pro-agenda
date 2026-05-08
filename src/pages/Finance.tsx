@@ -115,7 +115,7 @@ export default function Finance() {
           <Button size="sm" variant="outline" onClick={() => { invalidate(); toast.success("Finanzas recalculadas"); }}>
             <RefreshCw className="h-4 w-4" /> Recalcular
           </Button>
-          <Button size="sm" variant="outline"><Download className="h-4 w-4" /> Exportar</Button>
+          <Button asChild size="sm" variant="outline"><Link to="/exportar"><Download className="h-4 w-4" /> Exportar</Link></Button>
         </div>
       </div>
 
