@@ -199,6 +199,19 @@ export default function NewPatient() {
               <Input id="nd" type="date" value={nextVisitDate} onChange={(e) => setNextVisitDate(e.target.value)} />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="nt">Hora próxima visita</Label>
+              <Input id="nt" type="time" value={nextVisitTime} onChange={(e) => setNextVisitTime(e.target.value)} />
+            </div>
+            <div className="flex items-end">
+              {isEdit && nextVisitDate && centerId && (
+                <Button type="button" variant="outline" className="w-full" asChild>
+                  <Link to="/agenda">Ver en agenda</Link>
+                </Button>
+              )}
+            </div>
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="w">Avisos clínicos</Label>
             <Input id="w" value={warnings} onChange={(e) => setWarnings(e.target.value)} placeholder="Diabetes, anticoagulantes…" />
