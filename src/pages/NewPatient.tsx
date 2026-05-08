@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCenters, useInvalidateAll } from "@/hooks/useData";
+import { syncPatientNextVisit, removePatientFromFutureVisits } from "@/lib/patientVisitSync";
 
 const PAYMENT_STATUSES = ["Pendiente", "Cobrado", "Incluido en factura", "No cobra", "Revisar"] as const;
 
@@ -34,6 +35,7 @@ export default function NewPatient() {
   const [defaultPrice, setDefaultPrice] = useState<number | "">("");
   const [lastVisitDate, setLastVisitDate] = useState("");
   const [nextVisitDate, setNextVisitDate] = useState("");
+  const [nextVisitTime, setNextVisitTime] = useState("");
   const [warnings, setWarnings] = useState("");
   const [allergies, setAllergies] = useState("");
   const [notes, setNotes] = useState("");
@@ -55,6 +57,7 @@ export default function NewPatient() {
       setDefaultPrice(data.default_price ?? "");
       setLastVisitDate(data.last_visit_date ?? "");
       setNextVisitDate(data.next_visit_date ?? "");
+      setNextVisitTime((data as any).next_visit_time ?? "");
       setWarnings(data.important_warnings ?? "");
       setAllergies(data.allergies ?? "");
       setNotes(data.clinical_notes ?? "");
@@ -78,17 +81,40 @@ export default function NewPatient() {
       default_price: defaultPrice === "" ? null : defaultPrice,
       last_visit_date: lastVisitDate || null,
       next_visit_date: nextVisitDate || null,
+      next_visit_time: nextVisitTime || null,
       important_warnings: warnings || null,
       allergies: allergies || null,
       clinical_notes: notes || null,
       payment_status: paymentStatus || null,
       is_active: isActive,
     };
-    const { error } = isEdit
-      ? await supabase.from("patients").update(payload).eq("id", id!)
-      : await supabase.from("patients").insert({ ...payload, user_id: user.id });
+    let savedId = id ?? null;
+    if (isEdit) {
+      const { error } = await supabase.from("patients").update(payload).eq("id", id!);
+      if (error) { setBusy(false); return toast.error(error.message); }
+    } else {
+      const { data: ins, error } = await supabase.from("patients").insert({ ...payload, user_id: user.id }).select("id").single();
+      if (error || !ins) { setBusy(false); return toast.error(error?.message ?? "Error"); }
+      savedId = ins.id;
+    }
+
+    // Sincronizar con la agenda si hay próxima visita y centro
+    if (savedId && nextVisitDate && centerId) {
+      await syncPatientNextVisit({
+        userId: user.id,
+        patientId: savedId,
+        patientName: fullName.trim(),
+        centerId,
+        date: nextVisitDate,
+        time: nextVisitTime || null,
+        price: typeof defaultPrice === "number" ? defaultPrice : 0,
+      });
+    } else if (isEdit && !nextVisitDate) {
+      // Si en edición se ha quitado la próxima visita, limpiar visitas programadas
+      await removePatientFromFutureVisits(user.id, savedId!);
+    }
+
     setBusy(false);
-    if (error) return toast.error(error.message);
     toast.success(isEdit ? "Paciente actualizado correctamente" : "Paciente creado");
     invalidate();
     navigate("/pacientes");
@@ -171,6 +197,19 @@ export default function NewPatient() {
             <div className="space-y-1.5">
               <Label htmlFor="nd">Próxima visita</Label>
               <Input id="nd" type="date" value={nextVisitDate} onChange={(e) => setNextVisitDate(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="nt">Hora próxima visita</Label>
+              <Input id="nt" type="time" value={nextVisitTime} onChange={(e) => setNextVisitTime(e.target.value)} />
+            </div>
+            <div className="flex items-end">
+              {isEdit && nextVisitDate && centerId && (
+                <Button type="button" variant="outline" className="w-full" asChild>
+                  <Link to="/agenda">Ver en agenda</Link>
+                </Button>
+              )}
             </div>
           </div>
           <div className="space-y-1.5">

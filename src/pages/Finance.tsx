@@ -40,7 +40,25 @@ export default function Finance() {
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     });
 
-    const gross = monthVisits.reduce((s, v) => s + Number(v.gross_amount || 0), 0);
+    // Bruto / cobrado / pendiente desde visit_patients del mes
+    let gross = 0, paid = 0, pendingAmount = 0;
+    for (const v of monthVisits) {
+      const vps = (v as any).visit_patients ?? [];
+      if (vps.length === 0) {
+        // fallback al campo agregado de la visita
+        gross += Number(v.gross_amount || 0);
+        if (v.status === "Cobrada") paid += Number(v.gross_amount || 0);
+        else pendingAmount += Number(v.gross_amount || 0);
+      } else {
+        for (const vp of vps) {
+          const p = Number(vp.price_charged || 0);
+          gross += p;
+          if (vp.payment_status === "Cobrado") paid += p;
+          else pendingAmount += p;
+        }
+      }
+    }
+
     const irpfPct = Number(settings.default_irpf_percentage) || 0;
     const irpf = gross * irpfPct / 100;
 
@@ -57,24 +75,24 @@ export default function Finance() {
     }, 0);
 
     const fee = settings.apply_self_employed_fee ? Number(settings.monthly_self_employed_fee || 0) : 0;
-    // Reparto: actualmente todo el mes es del propio usuario, así que
-    // imputamos la cuota completa del mes a sus visitas.
     const feeImputed = fee;
-
     const fixed = Number(settings.monthly_fixed_expenses || 0);
-    const fixedImputed = fixed; // se imputa al mes en curso
+    const fixedImputed = fixed;
 
     const net = gross - irpf - travelCost - materialCost - otherExpenses - feeImputed - fixedImputed;
 
     const done = monthVisits.filter((v) => ["Realizada", "Cobrada", "Facturada"].includes(v.status)).length;
-    const pending = visits.filter((v) => v.status === "Pendiente de cobro" || v.status === "Realizada");
-    const pendingAmount = pending.reduce((s, v) => s + Number(v.gross_amount || 0), 0);
+    const pending = visits.filter((v) => {
+      const vps = (v as any).visit_patients ?? [];
+      if (vps.length === 0) return v.status === "Pendiente de cobro" || v.status === "Realizada";
+      return vps.some((vp: any) => vp.payment_status === "Pendiente");
+    });
     const toInvoice = visits
       .filter((v) => v.status === "Cobrada")
       .reduce((s, v) => s + Number(v.gross_amount || 0), 0);
 
     return {
-      monthVisits, gross, irpfPct, irpf, materialCost, otherExpenses,
+      monthVisits, gross, paid, irpfPct, irpf, materialCost, otherExpenses,
       travelCost, feeImputed, fixedImputed, net, done, pending, pendingAmount, toInvoice,
     };
   }, [visits, expenses, settings, now]);
@@ -82,7 +100,9 @@ export default function Finance() {
   const markPaid = async (id: string) => {
     const { error } = await supabase.from("visits").update({ status: "Cobrada" }).eq("id", id);
     if (error) return toast.error(error.message);
-    await supabase.from("visit_patients").update({ payment_status: "Cobrado" }).eq("visit_id", id);
+    await supabase.from("visit_patients")
+      .update({ payment_status: "Cobrado", paid_at: new Date().toISOString() })
+      .eq("visit_id", id);
     toast.success("Cobro registrado");
     invalidate();
   };
@@ -138,6 +158,7 @@ export default function Finance() {
             </CardContent>
           </Card>
 
+          <MetricRow icon={<Wallet className="h-4 w-4" />} label="Cobrado este mes" value={formatEUR(calc.paid)} accent="info" />
           <MetricRow icon={<TrendingUp className="h-4 w-4" />} label="Ganancia media por visita" value={calc.monthVisits.length ? formatEUR(calc.net / calc.monthVisits.length) : "—"} />
           <MetricRow icon={<Clock className="h-4 w-4" />} label="Pendiente de cobro" value={formatEUR(calc.pendingAmount)} accent="warning" />
           <MetricRow icon={<FileText className="h-4 w-4" />} label="Pendiente de facturar" value={formatEUR(calc.toInvoice)} accent="info" />

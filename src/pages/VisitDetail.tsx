@@ -29,7 +29,9 @@ export default function VisitDetail() {
   const markPaid = async () => {
     const { error } = await supabase.from("visits").update({ status: "Cobrada" }).eq("id", visit.id);
     if (error) return toast.error(error.message);
-    await supabase.from("visit_patients").update({ payment_status: "Cobrado" }).eq("visit_id", visit.id);
+    await supabase.from("visit_patients")
+      .update({ payment_status: "Cobrado", paid_at: new Date().toISOString() })
+      .eq("visit_id", visit.id);
     toast.success("Cobro registrado");
     invalidate();
   };

@@ -186,6 +186,7 @@ export type Database = {
           is_active: boolean
           last_visit_date: string | null
           next_visit_date: string | null
+          next_visit_time: string | null
           patient_code: string | null
           payment_status: string | null
           phone: string | null
@@ -206,6 +207,7 @@ export type Database = {
           is_active?: boolean
           last_visit_date?: string | null
           next_visit_date?: string | null
+          next_visit_time?: string | null
           patient_code?: string | null
           payment_status?: string | null
           phone?: string | null
@@ -226,6 +228,7 @@ export type Database = {
           is_active?: boolean
           last_visit_date?: string | null
           next_visit_date?: string | null
+          next_visit_time?: string | null
           patient_code?: string | null
           payment_status?: string | null
           phone?: string | null
@@ -341,6 +344,7 @@ export type Database = {
           attended: boolean
           created_at: string
           id: string
+          paid_at: string | null
           patient_id: string | null
           patient_name: string | null
           payment_status: string
@@ -353,6 +357,7 @@ export type Database = {
           attended?: boolean
           created_at?: string
           id?: string
+          paid_at?: string | null
           patient_id?: string | null
           patient_name?: string | null
           payment_status?: string
@@ -365,6 +370,7 @@ export type Database = {
           attended?: boolean
           created_at?: string
           id?: string
+          paid_at?: string | null
           patient_id?: string | null
           patient_name?: string | null
           payment_status?: string
