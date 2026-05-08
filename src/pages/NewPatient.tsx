@@ -81,17 +81,40 @@ export default function NewPatient() {
       default_price: defaultPrice === "" ? null : defaultPrice,
       last_visit_date: lastVisitDate || null,
       next_visit_date: nextVisitDate || null,
+      next_visit_time: nextVisitTime || null,
       important_warnings: warnings || null,
       allergies: allergies || null,
       clinical_notes: notes || null,
       payment_status: paymentStatus || null,
       is_active: isActive,
     };
-    const { error } = isEdit
-      ? await supabase.from("patients").update(payload).eq("id", id!)
-      : await supabase.from("patients").insert({ ...payload, user_id: user.id });
+    let savedId = id ?? null;
+    if (isEdit) {
+      const { error } = await supabase.from("patients").update(payload).eq("id", id!);
+      if (error) { setBusy(false); return toast.error(error.message); }
+    } else {
+      const { data: ins, error } = await supabase.from("patients").insert({ ...payload, user_id: user.id }).select("id").single();
+      if (error || !ins) { setBusy(false); return toast.error(error?.message ?? "Error"); }
+      savedId = ins.id;
+    }
+
+    // Sincronizar con la agenda si hay próxima visita y centro
+    if (savedId && nextVisitDate && centerId) {
+      await syncPatientNextVisit({
+        userId: user.id,
+        patientId: savedId,
+        patientName: fullName.trim(),
+        centerId,
+        date: nextVisitDate,
+        time: nextVisitTime || null,
+        price: typeof defaultPrice === "number" ? defaultPrice : 0,
+      });
+    } else if (isEdit && !nextVisitDate) {
+      // Si en edición se ha quitado la próxima visita, limpiar visitas programadas
+      await removePatientFromFutureVisits(user.id, savedId!);
+    }
+
     setBusy(false);
-    if (error) return toast.error(error.message);
     toast.success(isEdit ? "Paciente actualizado correctamente" : "Paciente creado");
     invalidate();
     navigate("/pacientes");
