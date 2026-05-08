@@ -12,6 +12,7 @@ import Agenda from "@/pages/Agenda";
 import Patients from "@/pages/Patients";
 import MaterialPage from "@/pages/Material";
 import Finance from "@/pages/Finance";
+import Exports from "@/pages/Exports";
 import Settings from "@/pages/Settings";
 import NewVisit from "@/pages/NewVisit";
 import VisitDetail from "@/pages/VisitDetail";
