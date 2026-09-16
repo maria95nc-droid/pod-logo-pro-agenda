@@ -1,41 +1,15 @@
-// Centros/residencias que David ya atiende de forma habitual (datos reales de su cartera de clientes cerrada).
-// Se usan solo como plantilla de importación inicial: el usuario puede editarlos o borrarlos después de importarlos.
-export interface KnownCenter {
-  name: string;
-  type: "Residencia" | "Centro de día";
-  defaultPricePerPatient?: number;
-  visitFrequency?: string;
-  paymentMethod?: string;
-  billingNotes?: string;
-  materialNotes?: string;
-  notes?: string;
-}
+// Devuelve la plantilla de residencias habituales de David para la importación inicial.
+// Vive en el backend (no en el bundle público) porque contiene datos reales de su
+// cartera de clientes (nombres de centros, precios, forma de cobro). Supabase exige
+// un JWT válido para invocar esta función, así que solo un usuario autenticado de
+// esta cuenta puede leerla.
+import { corsHeaders } from "@supabase/supabase-js/cors";
 
-export const KNOWN_CENTERS: KnownCenter[] = [
-  {
-    name: "Argüelles",
-    type: "Residencia",
-    defaultPricePerPatient: 14,
-    notes: "Cartera habitual desde junio.",
-  },
-  {
-    name: "Trubia",
-    type: "Residencia",
-    defaultPricePerPatient: 14,
-    notes: "Cartera habitual desde julio.",
-  },
-  {
-    name: "Oviedo",
-    type: "Residencia",
-    defaultPricePerPatient: 14,
-    notes: "Cartera habitual desde julio/agosto.",
-  },
-  {
-    name: "Amar",
-    type: "Residencia",
-    defaultPricePerPatient: 18,
-    notes: "Cartera habitual desde junio.",
-  },
+const KNOWN_CENTERS = [
+  { name: "Argüelles", type: "Residencia", defaultPricePerPatient: 14, notes: "Cartera habitual desde junio." },
+  { name: "Trubia", type: "Residencia", defaultPricePerPatient: 14, notes: "Cartera habitual desde julio." },
+  { name: "Oviedo", type: "Residencia", defaultPricePerPatient: 14, notes: "Cartera habitual desde julio/agosto." },
+  { name: "Amar", type: "Residencia", defaultPricePerPatient: 18, notes: "Cartera habitual desde junio." },
   {
     name: "Residencia Ave María",
     type: "Residencia",
@@ -54,7 +28,8 @@ export const KNOWN_CENTERS: KnownCenter[] = [
     type: "Centro de día",
     defaultPricePerPatient: 15,
     visitFrequency: "Mañana y tarde",
-    billingNotes: "Son 3 centros distintos; se factura con fecha del mes siguiente a la visita (visita en mayo se factura en junio).",
+    billingNotes:
+      "Son 3 centros distintos; se factura con fecha del mes siguiente a la visita (visita en mayo se factura en junio).",
   },
   {
     name: "Residencia La Fresneda",
@@ -92,3 +67,12 @@ export const KNOWN_CENTERS: KnownCenter[] = [
     notes: "Cartera habitual desde diciembre.",
   },
 ];
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+  return new Response(JSON.stringify({ centers: KNOWN_CENTERS }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+});

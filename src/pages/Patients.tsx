@@ -7,10 +7,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Plus, Search, Phone, MapPin, AlertTriangle, Building2, Pencil, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { MicButton } from "@/components/voice/MicButton";
-import { useCenters, usePatients, useInvalidateAll } from "@/hooks/useData";
+import { useCenters, usePatients, useInvalidateAll, useKnownCenters } from "@/hooks/useData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { KNOWN_CENTERS } from "@/data/knownCenters";
 
 export default function Patients() {
   const [query, setQuery] = useState("");
@@ -19,11 +18,12 @@ export default function Patients() {
   const invalidate = useInvalidateAll();
   const { data: patients = [] } = usePatients();
   const { data: centers = [] } = useCenters();
+  const { data: knownCenters = [] } = useKnownCenters();
 
   const filtered = patients.filter((p) => p.full_name.toLowerCase().includes(query.toLowerCase()));
   const activeCenters = centers.filter((c) => c.is_active);
 
-  const pendingKnownCenters = KNOWN_CENTERS.filter(
+  const pendingKnownCenters = knownCenters.filter(
     (kc) => !centers.some((c) => c.name.trim().toLowerCase() === kc.name.trim().toLowerCase()),
   );
 

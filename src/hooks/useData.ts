@@ -159,6 +159,32 @@ export function useUserSettings() {
   });
 }
 
+// ============ Known centers (plantilla de importación) ============
+export interface KnownCenter {
+  name: string;
+  type: "Residencia" | "Centro de día";
+  defaultPricePerPatient?: number;
+  visitFrequency?: string;
+  paymentMethod?: string;
+  billingNotes?: string;
+  materialNotes?: string;
+  notes?: string;
+}
+
+export function useKnownCenters() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["known_centers"],
+    enabled: !!user,
+    staleTime: Infinity,
+    queryFn: async (): Promise<KnownCenter[]> => {
+      const { data, error } = await supabase.functions.invoke<{ centers: KnownCenter[] }>("known-centers");
+      if (error) throw error;
+      return data?.centers ?? [];
+    },
+  });
+}
+
 // ============ Generic invalidate helpers ============
 export function useInvalidateAll() {
   const qc = useQueryClient();
