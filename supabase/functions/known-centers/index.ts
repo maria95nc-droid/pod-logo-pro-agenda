@@ -6,8 +6,12 @@
 // JWT válido no basta: cualquier desconocido podría registrarse y leer estos datos.
 // Por eso, además del JWT (verificado por la plataforma), comprobamos que el email
 // del usuario autenticado es el del propietario antes de devolver la lista real.
-import { corsHeaders } from "@supabase/supabase-js/cors";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 const OWNER_EMAIL = "davidmariaajnc@gmail.com";
 
