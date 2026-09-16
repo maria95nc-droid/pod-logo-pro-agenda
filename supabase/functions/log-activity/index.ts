@@ -33,9 +33,22 @@ Deno.serve(async (req) => {
     return json({ error: "No autorizado" }, 401);
   }
 
+  function resolveServiceKey(): string {
+    const legacy = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (legacy) return legacy;
+    const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
+    if (!raw) return "";
+    try {
+      const parsed = JSON.parse(raw) as Record<string, string>;
+      return Object.values(parsed)[0] ?? "";
+    } catch {
+      return "";
+    }
+  }
+
   const admin = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    resolveServiceKey(),
   );
 
   let body: Record<string, unknown>;
