@@ -1,9 +1,15 @@
 // Devuelve la plantilla de residencias habituales de David para la importación inicial.
 // Vive en el backend (no en el bundle público) porque contiene datos reales de su
-// cartera de clientes (nombres de centros, precios, forma de cobro). Supabase exige
-// un JWT válido para invocar esta función, así que solo un usuario autenticado de
-// esta cuenta puede leerla.
+// cartera de clientes (nombres de centros, precios, forma de cobro).
+//
+// La app permite alta libre de cuentas (email/contraseña), así que exigir solo un
+// JWT válido no basta: cualquier desconocido podría registrarse y leer estos datos.
+// Por eso, además del JWT (verificado por la plataforma), comprobamos que el email
+// del usuario autenticado es el del propietario antes de devolver la lista real.
 import { corsHeaders } from "@supabase/supabase-js/cors";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const OWNER_EMAIL = "davidmariaajnc@gmail.com";
 
 const KNOWN_CENTERS = [
   { name: "Argüelles", type: "Residencia", defaultPricePerPatient: 14, notes: "Cartera habitual desde junio." },
@@ -72,7 +78,23 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
-  return new Response(JSON.stringify({ centers: KNOWN_CENTERS }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+
+  const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+  const authHeader = req.headers.get("Authorization") ?? "";
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+    { global: { headers: { Authorization: authHeader } } },
+  );
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const email = userData?.user?.email?.toLowerCase().trim();
+
+  if (userError || !email || email !== OWNER_EMAIL) {
+    // Usuario autenticado pero no es el propietario: no revelamos datos de negocio.
+    return new Response(JSON.stringify({ centers: [] }), { headers: jsonHeaders });
+  }
+
+  return new Response(JSON.stringify({ centers: KNOWN_CENTERS }), { headers: jsonHeaders });
 });
