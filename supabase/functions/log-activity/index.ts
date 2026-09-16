@@ -15,7 +15,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-assistant-token",
 };
 
-const OWNER_USER_ID = "51b3c20d-b503-476f-9221-3401a509d559";
+const OWNER_USER_ID = "71a0caa3-f335-4090-95b7-7882dfcf5523";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
