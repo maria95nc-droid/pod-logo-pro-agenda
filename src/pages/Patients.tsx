@@ -4,17 +4,50 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Search, Phone, MapPin, AlertTriangle, Building2, Pencil } from "lucide-react";
+import { Plus, Search, Phone, MapPin, AlertTriangle, Building2, Pencil, Download, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { MicButton } from "@/components/voice/MicButton";
-import { useCenters, usePatients } from "@/hooks/useData";
+import { useCenters, usePatients, useInvalidateAll } from "@/hooks/useData";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { KNOWN_CENTERS } from "@/data/knownCenters";
 
 export default function Patients() {
   const [query, setQuery] = useState("");
+  const [importing, setImporting] = useState(false);
+  const { user } = useAuth();
+  const invalidate = useInvalidateAll();
   const { data: patients = [] } = usePatients();
   const { data: centers = [] } = useCenters();
 
   const filtered = patients.filter((p) => p.full_name.toLowerCase().includes(query.toLowerCase()));
   const activeCenters = centers.filter((c) => c.is_active);
+
+  const pendingKnownCenters = KNOWN_CENTERS.filter(
+    (kc) => !centers.some((c) => c.name.trim().toLowerCase() === kc.name.trim().toLowerCase()),
+  );
+
+  const handleImportKnownCenters = async () => {
+    if (!user || pendingKnownCenters.length === 0) return;
+    setImporting(true);
+    const rows = pendingKnownCenters.map((kc) => ({
+      user_id: user.id,
+      name: kc.name,
+      type: kc.type,
+      default_price_per_patient: kc.defaultPricePerPatient ?? null,
+      visit_frequency: kc.visitFrequency ?? null,
+      payment_method: kc.paymentMethod ?? null,
+      billing_notes: kc.billingNotes ?? null,
+      material_notes: kc.materialNotes ?? null,
+      notes: kc.notes ?? null,
+      is_active: true,
+    }));
+    const { error } = await supabase.from("centers").insert(rows);
+    setImporting(false);
+    if (error) return toast.error(error.message);
+    toast.success(`${rows.length} residencia${rows.length === 1 ? "" : "s"} importada${rows.length === 1 ? "" : "s"}`);
+    invalidate();
+  };
 
   return (
     <div className="space-y-4">
@@ -80,11 +113,24 @@ export default function Patients() {
         </TabsContent>
 
         <TabsContent value="centros" className="space-y-3">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
+            {pendingKnownCenters.length > 0 && (
+              <Button variant="outline" onClick={handleImportKnownCenters} disabled={importing}>
+                {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                Importar mis residencias ({pendingKnownCenters.length})
+              </Button>
+            )}
             <Button asChild><Link to="/centros/nuevo"><Plus className="h-4 w-4" /> Nuevo centro</Link></Button>
           </div>
           {activeCenters.length === 0 && (
-            <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">Aún no hay centros. Añade uno o díctalo por voz.</CardContent></Card>
+            <Card>
+              <CardContent className="space-y-2 p-6 text-center text-sm text-muted-foreground">
+                <p>Aún no hay centros. Añade uno o díctalo por voz.</p>
+                {pendingKnownCenters.length > 0 && (
+                  <p>O pulsa "Importar mis residencias" para cargar de golpe las {pendingKnownCenters.length} residencias que ya atiendes habitualmente.</p>
+                )}
+              </CardContent>
+            </Card>
           )}
           <div className="space-y-2">
             {activeCenters.map((c) => {

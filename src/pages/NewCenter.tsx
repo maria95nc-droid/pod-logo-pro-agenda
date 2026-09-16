@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useInvalidateAll } from "@/hooks/useData";
+import { PAYMENT_METHODS } from "@/types";
 
 const TYPES = ["Residencia", "Centro de día", "Domicilio", "Clínica propia", "Otro"] as const;
 
@@ -36,6 +37,7 @@ export default function NewCenter() {
   const [visitFrequency, setVisitFrequency] = useState("");
   const [price, setPrice] = useState<number | "">("");
   const [paymentMethod, setPaymentMethod] = useState("");
+  const [useCustomPaymentMethod, setUseCustomPaymentMethod] = useState(false);
   const [billingNotes, setBillingNotes] = useState("");
   const [materialNotes, setMaterialNotes] = useState("");
   const [notes, setNotes] = useState("");
@@ -58,7 +60,9 @@ export default function NewCenter() {
       setUsualSchedule(data.usual_schedule ?? "");
       setVisitFrequency((data as any).visit_frequency ?? "");
       setPrice(data.default_price_per_patient ?? "");
-      setPaymentMethod((data as any).payment_method ?? "");
+      const loadedPaymentMethod = (data as any).payment_method ?? "";
+      setPaymentMethod(loadedPaymentMethod);
+      setUseCustomPaymentMethod(loadedPaymentMethod !== "" && !(PAYMENT_METHODS as readonly string[]).includes(loadedPaymentMethod));
       setBillingNotes((data as any).billing_notes ?? "");
       setMaterialNotes((data as any).material_notes ?? "");
       setNotes(data.notes ?? "");
@@ -180,9 +184,26 @@ export default function NewCenter() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="pm">Forma de cobro</Label>
-              <Input id="pm" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} placeholder="Transferencia…" />
+              <Select
+                value={useCustomPaymentMethod ? "Otro" : paymentMethod}
+                onValueChange={(v) => {
+                  setUseCustomPaymentMethod(v === "Otro");
+                  setPaymentMethod(v === "Otro" ? "" : v);
+                }}
+              >
+                <SelectTrigger id="pm"><SelectValue placeholder="Selecciona…" /></SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           </div>
+          {useCustomPaymentMethod && (
+            <div className="space-y-1.5">
+              <Label htmlFor="pm-custom">Especifica la forma de cobro</Label>
+              <Input id="pm-custom" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} placeholder="Ej.: Cheque, PayPal…" />
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="bn">Notas de facturación</Label>
             <Textarea id="bn" rows={2} value={billingNotes} onChange={(e) => setBillingNotes(e.target.value)} />

@@ -10,6 +10,18 @@ export type VisitStatus =
 
 export type PaymentStatus = "Pendiente" | "Cobrado" | "Incluido en factura" | "No cobra" | "Revisar";
 
+export const PAYMENT_METHODS = [
+  "Transferencia bancaria",
+  "Efectivo",
+  "Bizum",
+  "Domiciliación bancaria",
+  "Facturación directa a familias",
+  "A través de empresa gestora (Eulen)",
+  "Otro",
+] as const;
+
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
 export type VatMode = "Exento" | "Con IVA" | "Configurable";
 
 export interface Center {
