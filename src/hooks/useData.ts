@@ -192,6 +192,9 @@ export function useInvalidateAll() {
     qc.invalidateQueries({ queryKey: ["centers"] });
     qc.invalidateQueries({ queryKey: ["patients"] });
     qc.invalidateQueries({ queryKey: ["visits"] });
+    // El detalle de una visita vive en ["visit", id]: sin esto, marcarla como
+    // realizada o cobrada desde su ficha no refrescaba la propia ficha.
+    qc.invalidateQueries({ queryKey: ["visit"] });
     qc.invalidateQueries({ queryKey: ["materials"] });
     qc.invalidateQueries({ queryKey: ["expenses"] });
     qc.invalidateQueries({ queryKey: ["user_settings"] });

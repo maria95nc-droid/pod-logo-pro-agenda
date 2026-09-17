@@ -1,11 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StreakBadge } from "@/components/StreakBadge";
-import { calculateStreak } from "@/lib/streak";
+import { CollectPaymentSheet } from "@/components/payments/CollectPaymentSheet";
+import { calculateStreak, isCompletedVisit } from "@/lib/streak";
 import { formatEUR } from "@/lib/format";
 import {
   useVisits,
@@ -15,7 +16,6 @@ import {
   useInvalidateAll,
   defaultUserSettings,
 } from "@/hooks/useData";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Download, TrendingUp, FileText, AlertCircle, Clock, Wallet, RefreshCw } from "lucide-react";
 
@@ -84,7 +84,7 @@ export default function Finance() {
 
     const net = gross - irpf - travelCost - materialCost - otherExpenses - feeImputed - fixedImputed;
 
-    const done = monthVisits.filter((v) => ["Realizada", "Cobrada", "Facturada"].includes(v.status)).length;
+    const done = monthVisits.filter(isCompletedVisit).length;
     const pending = visits.filter((v) => {
       const vps = (v as any).visit_patients ?? [];
       if (vps.length === 0) return v.status === "Pendiente de cobro" || v.status === "Realizada";
@@ -100,15 +100,11 @@ export default function Finance() {
     };
   }, [visits, expenses, settings, now]);
 
-  const markPaid = async (id: string) => {
-    const { error } = await supabase.from("visits").update({ status: "Cobrada" }).eq("id", id);
-    if (error) return toast.error(error.message);
-    await supabase.from("visit_patients")
-      .update({ payment_status: "Cobrado", paid_at: new Date().toISOString() })
-      .eq("visit_id", id);
-    toast.success("Cobro registrado");
-    invalidate();
-  };
+  // El cobro se confirma en la hoja de desglose (permite partirlo entre varias
+  // formas de pago); aquí sólo se guarda qué visita se está cobrando.
+  const [payingVisitId, setPayingVisitId] = useState<string | null>(null);
+  const payingVisit = payingVisitId ? visits.find((v) => v.id === payingVisitId) ?? null : null;
+  const payingCenter = payingVisit ? centers.find((c) => c.id === payingVisit.center_id) : undefined;
 
   const streak = useMemo(() => calculateStreak(visits), [visits]);
   const monthProgress = calc.monthVisits.length > 0 ? Math.round((calc.done / calc.monthVisits.length) * 100) : 0;
@@ -220,8 +216,8 @@ export default function Finance() {
                     <p className="font-semibold">{formatEUR(Number(v.gross_amount))}</p>
                     <StatusBadge status={v.status as any} className="mt-0.5 text-[10px]" />
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => markPaid(v.id)}>
-                    <Wallet className="h-3.5 w-3.5" /> Cobrar
+                  <Button size="sm" variant="outline" onClick={() => setPayingVisitId(v.id)}>
+                    <Wallet className="h-3.5 w-3.5" aria-hidden="true" /> Cobrar
                   </Button>
                 </CardContent>
               </Card>
@@ -246,6 +242,18 @@ export default function Finance() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <CollectPaymentSheet
+        open={!!payingVisit}
+        onOpenChange={(next) => !next && setPayingVisitId(null)}
+        visit={payingVisit}
+        centerName={payingCenter?.name}
+        centerPaymentMethod={payingCenter?.payment_method}
+        onConfirmed={() => {
+          setPayingVisitId(null);
+          invalidate();
+        }}
+      />
     </div>
   );
 }

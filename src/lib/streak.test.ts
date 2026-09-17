@@ -19,10 +19,15 @@ describe("isCompletedVisit", () => {
     expect(isCompletedVisit({ status: "Facturada" })).toBe(true);
   });
 
+  it("cuenta también las pendientes de cobro: el trabajo está hecho", () => {
+    // Al marcar «Realizada» una visita sin cobrar queda en este estado, así que
+    // si no contase, la racha y el progreso del día se romperían solos.
+    expect(isCompletedVisit({ status: "Pendiente de cobro" })).toBe(true);
+  });
+
   it("no cuenta las programadas ni las canceladas", () => {
     expect(isCompletedVisit({ status: "Programada" })).toBe(false);
     expect(isCompletedVisit({ status: "Cancelada" })).toBe(false);
-    expect(isCompletedVisit({ status: "Pendiente de cobro" })).toBe(false);
     expect(isCompletedVisit({})).toBe(false);
   });
 });

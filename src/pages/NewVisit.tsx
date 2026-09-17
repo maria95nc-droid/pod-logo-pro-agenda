@@ -9,10 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatEUR, toIsoDate } from "@/lib/format";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Save, Users } from "lucide-react";
+import { ArrowLeft, Loader2, Save, Users, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCenters, usePatients, useInvalidateAll } from "@/hooks/useData";
+import { QuickVisitSheet } from "@/components/quick/QuickVisitSheet";
 
 const IRPF = 7;
 const DEFAULT_TRAVEL = 8;
@@ -24,6 +25,7 @@ export default function NewVisit() {
   const { data: patients = [] } = usePatients();
   const invalidate = useInvalidateAll();
   const [busy, setBusy] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
   const [centerId, setCenterId] = useState("");
   const [date, setDate] = useState(toIsoDate());
   const [start, setStart] = useState("09:00");
@@ -98,9 +100,32 @@ export default function NewVisit() {
   return (
     <div className="space-y-4 pb-8">
       <div className="flex items-center gap-2">
-        <Button size="icon" variant="ghost" asChild><Link to="/"><ArrowLeft className="h-4 w-4" /></Link></Button>
-        <h1 className="flex-1 text-2xl font-bold">Nueva visita</h1>
+        <Button size="icon" variant="ghost" asChild><Link to="/"><ArrowLeft className="h-4 w-4" aria-hidden="true" /><span className="sr-only">Volver a Hoy</span></Link></Button>
+        <h1 className="min-w-0 flex-1 truncate text-2xl font-bold">Nueva visita</h1>
       </div>
+
+      {/* Atajo al modo rápido: para residencias basta con precio × nº de pacientes. */}
+      <Card className="border-primary/20 bg-primary-soft shadow-card">
+        <CardContent className="flex items-center gap-3 p-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">¿Solo necesitas cuántos pacientes?</p>
+            <p className="text-xs text-muted-foreground">Precio por paciente × nº de pacientes, sin marcarlos uno a uno.</p>
+          </div>
+          <Button type="button" size="sm" className="h-10 shrink-0" onClick={() => setQuickOpen(true)}>
+            <Zap className="h-4 w-4" aria-hidden="true" /> Modo rápido
+          </Button>
+        </CardContent>
+      </Card>
+
+      <QuickVisitSheet
+        open={quickOpen}
+        onOpenChange={setQuickOpen}
+        initialCenterId={centerId || null}
+        onCreated={() => {
+          invalidate();
+          navigate("/agenda");
+        }}
+      />
 
       <Card>
         <CardContent className="space-y-4 p-4">

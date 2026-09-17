@@ -4,15 +4,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatEUR, formatDateLong, capitalize, toIsoDate } from "@/lib/format";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { useVisits, useCenters, usePatients, useMaterials, useInvalidateAll } from "@/hooks/useData";
 import { calculateStreak, isCompletedVisit } from "@/lib/streak";
+import { markVisitDone } from "@/lib/visitActions";
+import { isQuickAggregateRow } from "@/lib/quickEntry";
 import { StreakBadge } from "@/components/StreakBadge";
 import { DayProgress } from "@/components/DayProgress";
 import { Celebration, type CelebrationTone } from "@/components/Celebration";
+import { QuickAddSheet } from "@/components/quick/QuickAddSheet";
+import { QuickVisitSheet } from "@/components/quick/QuickVisitSheet";
+import { CollectPaymentSheet } from "@/components/payments/CollectPaymentSheet";
 import {
   Clock, MapPin, Users, Plus, AlertTriangle, Package, ArrowRight,
-  CheckCircle2, Wallet, Navigation, Phone, ChevronRight, Loader2,
+  CheckCircle2, Wallet, Navigation, Phone, ChevronRight, Loader2, Zap,
 } from "lucide-react";
 
 export default function Today() {
@@ -29,6 +33,18 @@ export default function Today() {
     setCelebration({ id: burstId.current, tone });
   }, []);
   const endCelebration = useCallback(() => setCelebration(null), []);
+
+  // Altas y cobros «sobre la marcha»: se abren desde la cabecera y desde la
+  // tarjeta de la próxima visita, sin salir de Hoy.
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickVisitOpen, setQuickVisitOpen] = useState(false);
+  const [quickVisitCenterId, setQuickVisitCenterId] = useState<string | null>(null);
+  const [payingVisitId, setPayingVisitId] = useState<string | null>(null);
+
+  const openQuickVisit = useCallback((centerId: string | null = null) => {
+    setQuickVisitCenterId(centerId);
+    setQuickVisitOpen(true);
+  }, []);
 
   const now = new Date();
   const todayIso = toIsoDate(now);
@@ -55,6 +71,11 @@ export default function Today() {
   const lowStock = materials.filter((m) => Number(m.current_stock) <= Number(m.minimum_stock));
   const pendingPayments = visits.filter((v) => v.status === "Pendiente de cobro");
 
+  // Se busca por id (y no se guarda la visita en el estado) para que la hoja de
+  // cobro siempre trabaje con los importes recién refrescados.
+  const payingVisit = payingVisitId ? visits.find((v) => v.id === payingVisitId) ?? null : null;
+  const payingCenter = payingVisit ? centers.find((c) => c.id === payingVisit.center_id) : undefined;
+
   if (isLoading) {
     return <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>;
   }
@@ -77,6 +98,17 @@ export default function Today() {
           <StreakBadge days={streak.days} countsToday={streak.countsToday} />
         </div>
         {todays.length > 0 && <DayProgress completed={completedToday} total={todays.length} className="mt-3.5" />}
+
+        <div className="mt-3.5 grid grid-cols-2 gap-2">
+          <Button type="button" size="lg" className="h-12 px-2" onClick={() => openQuickVisit()}>
+            <Zap className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">Visita rápida</span>
+          </Button>
+          <Button type="button" size="lg" variant="outline" className="h-12 px-2" onClick={() => setQuickAddOpen(true)}>
+            <Plus className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">Añadir nuevo</span>
+          </Button>
+        </div>
       </header>
 
       {nextVisit ? (
@@ -86,12 +118,41 @@ export default function Today() {
           patients={patients}
           onAfterAction={invalidate}
           onCelebrate={celebrate}
+          onRequestPayment={setPayingVisitId}
         />
       ) : (
-        <EmptyStateCard />
+        <EmptyStateCard onQuickVisit={() => openQuickVisit()} onQuickAdd={() => setQuickAddOpen(true)} />
       )}
 
       <Celebration burstId={celebration?.id ?? null} tone={celebration?.tone} onDone={endCelebration} />
+
+      <QuickAddSheet
+        open={quickAddOpen}
+        onOpenChange={setQuickAddOpen}
+        onCreated={invalidate}
+        onRegisterVisit={openQuickVisit}
+      />
+      <QuickVisitSheet
+        open={quickVisitOpen}
+        onOpenChange={setQuickVisitOpen}
+        initialCenterId={quickVisitCenterId}
+        onCreated={() => {
+          celebrate("done");
+          invalidate();
+        }}
+      />
+      <CollectPaymentSheet
+        open={!!payingVisit}
+        onOpenChange={(next) => !next && setPayingVisitId(null)}
+        visit={payingVisit}
+        centerName={payingCenter?.name}
+        centerPaymentMethod={payingCenter?.payment_method}
+        onConfirmed={() => {
+          setPayingVisitId(null);
+          celebrate("paid");
+          invalidate();
+        }}
+      />
 
       {todays.length > 0 && (
         <div className="grid grid-cols-2 gap-2.5">
@@ -200,7 +261,7 @@ export default function Today() {
   );
 }
 
-function NextVisitCard({ visit, center, patients, onAfterAction, onCelebrate }: any) {
+function NextVisitCard({ visit, center, patients, onAfterAction, onCelebrate, onRequestPayment }: any) {
   const visitPatients: any[] = (visit.visit_patients ?? [])
     .map((vp: any) => ({
       vp,
@@ -225,35 +286,25 @@ function NextVisitCard({ visit, center, patients, onAfterAction, onCelebrate }: 
     : null;
 
   // Evita dobles envíos si se toca el botón dos veces seguidas en el móvil.
-  const [busy, setBusy] = useState<"done" | "paid" | null>(null);
+  const [busy, setBusy] = useState<"done" | null>(null);
 
+  /**
+   * Marcar «Realizada» ya no da el cobro por hecho: si queda dinero por cobrar
+   * la visita pasa a «Pendiente de cobro» y sigue saliendo en los avisos hasta
+   * que se confirme el pago con el botón «Cobro».
+   */
   const markDone = async () => {
     if (busy) return;
     setBusy("done");
-    const { error } = await supabase.from("visits").update({ status: "Realizada" }).eq("id", visit.id);
+    const result = await markVisitDone(visit);
     setBusy(null);
-    if (error) return toast.error(error.message);
+    if (!result.ok) return toast.error(result.error ?? "No se pudo actualizar la visita");
     onCelebrate?.("done");
-    toast.success("Visita marcada como realizada");
-    onAfterAction();
-  };
-
-  const markPaid = async () => {
-    if (busy) return;
-    setBusy("paid");
-    const { error } = await supabase.from("visits").update({ status: "Cobrada" }).eq("id", visit.id);
-    if (error) {
-      setBusy(null);
-      return toast.error(error.message);
-    }
-    const { error: patientsError } = await supabase
-      .from("visit_patients")
-      .update({ payment_status: "Cobrado" })
-      .eq("visit_id", visit.id);
-    setBusy(null);
-    if (patientsError) return toast.error(patientsError.message);
-    onCelebrate?.("paid");
-    toast.success("Cobro registrado");
+    toast.success(
+      result.status === "Pendiente de cobro"
+        ? "Visita realizada · pendiente de cobro"
+        : "Visita marcada como realizada",
+    );
     onAfterAction();
   };
 
@@ -315,10 +366,17 @@ function NextVisitCard({ visit, center, patients, onAfterAction, onCelebrate }: 
           <ul className="space-y-1.5">
             {visitPatients.map(({ vp, p }) => {
               const name = p?.full_name ?? vp.patient_name ?? "Paciente";
+              // Los registros rápidos guardan una sola fila agregada («6 pacientes»):
+              // sus «iniciales» no significan nada, mejor un icono.
+              const aggregate = !p && isQuickAggregateRow(vp);
               return (
                 <li key={vp.id} className="flex items-center gap-2.5 text-sm">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[10px] font-semibold text-primary">
-                    {name.split(" ").map((n: string) => n[0]).slice(0, 2).join("")}
+                    {aggregate ? (
+                      <Users className="h-3.5 w-3.5" aria-hidden="true" />
+                    ) : (
+                      name.split(" ").map((n: string) => n[0]).slice(0, 2).join("")
+                    )}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{name}</span>
                   {p?.important_warnings && <AlertTriangle className="h-3.5 w-3.5 text-status-warning" />}
@@ -342,9 +400,9 @@ function NextVisitCard({ visit, center, patients, onAfterAction, onCelebrate }: 
             disabled={busy !== null}
           />
           <QuickAction
-            icon={busy === "paid" ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Wallet className="h-[18px] w-[18px]" />}
+            icon={<Wallet className="h-[18px] w-[18px]" />}
             label="Cobro"
-            onClick={markPaid}
+            onClick={() => onRequestPayment?.(visit.id)}
             variant="streak"
             disabled={busy !== null}
           />
@@ -384,16 +442,28 @@ function QuickAction({ icon, label, onClick, variant, as, to, disabled }: any) {
   );
 }
 
-function EmptyStateCard() {
+function EmptyStateCard({ onQuickVisit, onQuickAdd }: { onQuickVisit: () => void; onQuickAdd: () => void }) {
   return (
     <Card className="border-dashed shadow-card">
-      <CardContent className="flex flex-col items-center gap-2 p-8 text-center">
+      <CardContent className="flex flex-col items-center gap-2 p-6 text-center sm:p-8">
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-primary">
-          <Clock className="h-5 w-5" />
+          <Clock className="h-5 w-5" aria-hidden="true" />
         </div>
         <p className="font-semibold">Día libre</p>
-        <p className="max-w-xs text-xs text-muted-foreground">No tienes visitas programadas. Puedes añadir una nueva o dictarla por voz.</p>
-        <Button asChild size="sm" className="mt-2"><Link to="/visita/nueva"><Plus className="h-4 w-4" /> Nueva visita</Link></Button>
+        <p className="max-w-xs text-xs text-muted-foreground">
+          No tienes visitas programadas. Puedes registrar una que acabes de hacer, dar de alta un domicilio o dictarla por voz.
+        </p>
+        <div className="mt-2 flex w-full max-w-xs flex-col gap-2">
+          <Button type="button" size="sm" className="h-11" onClick={onQuickVisit}>
+            <Zap className="h-4 w-4" aria-hidden="true" /> Registrar visita rápida
+          </Button>
+          <Button type="button" size="sm" variant="outline" className="h-11" onClick={onQuickAdd}>
+            <Plus className="h-4 w-4" aria-hidden="true" /> Añadir domicilio o centro
+          </Button>
+          <Button asChild size="sm" variant="ghost" className="h-10 text-xs text-muted-foreground">
+            <Link to="/visita/nueva">Formulario detallado</Link>
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

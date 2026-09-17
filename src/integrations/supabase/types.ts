@@ -347,6 +347,7 @@ export type Database = {
           paid_at: string | null
           patient_id: string | null
           patient_name: string | null
+          payment_breakdown: Json | null
           payment_status: string
           price_charged: number
           treatment_done: string | null
@@ -360,6 +361,7 @@ export type Database = {
           paid_at?: string | null
           patient_id?: string | null
           patient_name?: string | null
+          payment_breakdown?: Json | null
           payment_status?: string
           price_charged?: number
           treatment_done?: string | null
@@ -373,6 +375,7 @@ export type Database = {
           paid_at?: string | null
           patient_id?: string | null
           patient_name?: string | null
+          payment_breakdown?: Json | null
           payment_status?: string
           price_charged?: number
           treatment_done?: string | null

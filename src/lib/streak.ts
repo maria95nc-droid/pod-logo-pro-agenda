@@ -3,8 +3,12 @@ import { toIsoDate } from "@/lib/format";
 /**
  * Estados que cuentan como "día trabajado": David registró actividad real.
  * Se usan tanto para la racha como para el progreso del día.
+ *
+ * «Pendiente de cobro» también cuenta: desde que marcar una visita como
+ * realizada dejó de dar el cobro por hecho, ése es el estado normal de una
+ * visita ya hecha. El trabajo está hecho aunque el dinero no haya llegado.
  */
-export const COMPLETED_VISIT_STATUSES = ["Realizada", "Cobrada", "Facturada"] as const;
+export const COMPLETED_VISIT_STATUSES = ["Realizada", "Pendiente de cobro", "Cobrada", "Facturada"] as const;
 
 const COMPLETED = new Set<string>(COMPLETED_VISIT_STATUSES);
 

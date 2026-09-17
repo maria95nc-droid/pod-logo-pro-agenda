@@ -1,12 +1,16 @@
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
+import { CollectPaymentSheet } from "@/components/payments/CollectPaymentSheet";
 import { formatEUR } from "@/lib/format";
 import { useVisit, useCenters, usePatients, useInvalidateAll } from "@/hooks/useData";
-import { supabase } from "@/integrations/supabase/client";
+import { describeLines, parsePaymentBreakdown } from "@/lib/payments";
+import { isQuickAggregateRow } from "@/lib/quickEntry";
+import { markVisitDone } from "@/lib/visitActions";
 import { toast } from "sonner";
-import { ArrowLeft, CheckCircle2, Clock, MapPin, Euro, Wallet } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock, MapPin, Euro, Users, Wallet } from "lucide-react";
 
 export default function VisitDetail() {
   const { id } = useParams();
@@ -15,24 +19,20 @@ export default function VisitDetail() {
   const { data: centers = [] } = useCenters();
   const { data: patients = [] } = usePatients();
   const invalidate = useInvalidateAll();
+  const [collecting, setCollecting] = useState(false);
 
   if (isLoading) return <p className="p-6 text-center text-sm text-muted-foreground">Cargando…</p>;
   if (!visit) return <p className="p-6 text-center">Visita no encontrada.</p>;
   const center = centers.find((c) => c.id === visit.center_id);
 
+  // Marcar realizada no implica cobrada: si queda importe, la visita queda
+  // pendiente de cobro y sigue avisando desde Hoy.
   const markDone = async () => {
-    const { error } = await supabase.from("visits").update({ status: "Realizada" }).eq("id", visit.id);
-    if (error) return toast.error(error.message);
-    toast.success("Visita realizada");
-    invalidate();
-  };
-  const markPaid = async () => {
-    const { error } = await supabase.from("visits").update({ status: "Cobrada" }).eq("id", visit.id);
-    if (error) return toast.error(error.message);
-    await supabase.from("visit_patients")
-      .update({ payment_status: "Cobrado", paid_at: new Date().toISOString() })
-      .eq("visit_id", visit.id);
-    toast.success("Cobro registrado");
+    const result = await markVisitDone(visit);
+    if (!result.ok) return toast.error(result.error ?? "No se pudo actualizar la visita");
+    toast.success(
+      result.status === "Pendiente de cobro" ? "Visita realizada · pendiente de cobro" : "Visita realizada",
+    );
     invalidate();
   };
 
@@ -67,15 +67,25 @@ export default function VisitDetail() {
             {visit.visit_patients.map((vp: any) => {
               const p = patients.find((x) => x.id === vp.patient_id);
               const name = p?.full_name ?? vp.patient_name ?? "Paciente";
+              const aggregate = !p && isQuickAggregateRow(vp);
+              const breakdown = parsePaymentBreakdown(vp.payment_breakdown);
               return (
                 <Card key={vp.id}>
                   <CardContent className="flex items-center gap-3 p-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-soft text-xs font-semibold text-primary">
-                      {name.split(" ").map((n: string) => n[0]).slice(0,2).join("")}
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-xs font-semibold text-primary">
+                      {aggregate ? (
+                        <Users className="h-4 w-4" aria-hidden="true" />
+                      ) : (
+                        name.split(" ").map((n: string) => n[0]).slice(0,2).join("")
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="truncate text-sm font-medium">{name}</p>
-                      <p className="text-xs text-muted-foreground">{p?.usual_treatment ?? vp.treatment_done ?? ""}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {breakdown
+                          ? describeLines(breakdown, formatEUR)
+                          : p?.usual_treatment ?? vp.treatment_done ?? ""}
+                      </p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-semibold inline-flex items-center gap-0.5"><Euro className="h-3 w-3" />{vp.price_charged}</p>
@@ -99,9 +109,22 @@ export default function VisitDetail() {
       )}
 
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="outline" onClick={markPaid}><Wallet className="h-4 w-4" /> Marcar cobrada</Button>
-        <Button onClick={markDone}><CheckCircle2 className="h-4 w-4" /> Marcar realizada</Button>
+        <Button variant="outline" className="h-11" onClick={() => setCollecting(true)}>
+          <Wallet className="h-4 w-4" aria-hidden="true" /> Registrar cobro
+        </Button>
+        <Button className="h-11" onClick={markDone}>
+          <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Marcar realizada
+        </Button>
       </div>
+
+      <CollectPaymentSheet
+        open={collecting}
+        onOpenChange={setCollecting}
+        visit={visit}
+        centerName={center?.name}
+        centerPaymentMethod={(center as { payment_method?: string | null } | undefined)?.payment_method}
+        onConfirmed={invalidate}
+      />
     </div>
   );
 }

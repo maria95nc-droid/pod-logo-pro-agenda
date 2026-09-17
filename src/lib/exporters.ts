@@ -3,6 +3,7 @@ import { saveAs } from "file-saver";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { supabase } from "@/integrations/supabase/client";
+import { attendedPatientsCount, type PaymentVisit } from "@/lib/payments";
 import type { UserSettings } from "@/hooks/useData";
 
 export interface ExportFilters {
@@ -101,9 +102,11 @@ function computeSummary(d: ExportData) {
         if (vp.payment_status === "Cobrado") paid += p;
         else if (vp.payment_status === "Incluido en factura") invoiced += p;
         else pending += p;
-        if (vp.attended) patientsAttended += 1;
       }
     }
+    // Los registros rápidos guardan una sola fila agregada, así que contar
+    // filas dejaría fuera a la mayoría de los pacientes de esa visita.
+    patientsAttended += attendedPatientsCount(v as PaymentVisit);
   }
   const irpfPct = num(d.settings.default_irpf_percentage);
   const irpf = (gross * irpfPct) / 100;
