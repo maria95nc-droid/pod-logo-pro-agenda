@@ -67,6 +67,21 @@
     --streak-bg: 32 95% 94%;                /* ámbar muy claro — superficie */
     --streak-glow: 38 95% 55%;              /* ámbar vivo — sólo decorativo */
 
+    /* Mapa de calor del mes (ver src/components/agenda/MonthHeatmap.tsx).
+       Rampa de 4 pasos sobre el verde principal: nivel 1 = día flojo,
+       nivel 4 = mejor día del mes. Cada nivel lleva su propio color de texto
+       (`-fg`) en vez de uno compartido, porque la rampa cruza el punto en el
+       que hay que invertir el texto. Todos los pares están comprobados a
+       ≥4.5:1 (AA) para el número del día, que es texto pequeño. */
+    --heat-1: 158 50% 90%;
+    --heat-1-fg: 158 70% 18%;
+    --heat-2: 158 52% 74%;
+    --heat-2-fg: 158 70% 18%;
+    --heat-3: 158 55% 53%;
+    --heat-3-fg: 158 70% 12%;
+    --heat-4: 157 62% 28%;
+    --heat-4-fg: 0 0% 100%;
+
     /* Gradientes y sombras */
     --gradient-primary: linear-gradient(135deg, hsl(158 64% 38%), hsl(165 70% 45%));
     --gradient-streak: linear-gradient(135deg, hsl(32 95% 94%), hsl(42 96% 92%));
@@ -113,6 +128,16 @@
     --streak: 32 95% 62%;
     --streak-bg: 26 45% 16%;
     --streak-glow: 38 95% 58%;
+    /* En oscuro la rampa se invierte: de verde apagado a verde luminoso, y el
+       texto pasa de claro a oscuro entre los niveles 2 y 3. */
+    --heat-1: 158 35% 20%;
+    --heat-1-fg: 150 25% 92%;
+    --heat-2: 158 45% 27%;
+    --heat-2-fg: 150 25% 92%;
+    --heat-3: 158 55% 45%;
+    --heat-3-fg: 160 45% 8%;
+    --heat-4: 158 62% 62%;
+    --heat-4-fg: 160 45% 8%;
     --gradient-streak: linear-gradient(135deg, hsl(26 45% 16%), hsl(20 40% 20%));
     --gradient-celebrate: linear-gradient(90deg, hsl(158 64% 45%), hsl(38 95% 58%));
     --sidebar-background: 240 5.9% 10%;
@@ -221,7 +246,12 @@
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    /* Sin esto, una entrada escalonada (`animationDelay` en línea) dejaría los
+       elementos invisibles hasta que venciera su retardo: justo el parpadeo que
+       `prefers-reduced-motion` quiere evitar. */
+    animation-delay: 0ms !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
   .confetti-piece,

@@ -52,6 +52,16 @@ export default {
           bg: "hsl(var(--streak-bg))",
           glow: "hsl(var(--streak-glow))",
         },
+        heat: {
+          1: "hsl(var(--heat-1))",
+          "1-fg": "hsl(var(--heat-1-fg))",
+          2: "hsl(var(--heat-2))",
+          "2-fg": "hsl(var(--heat-2-fg))",
+          3: "hsl(var(--heat-3))",
+          "3-fg": "hsl(var(--heat-3-fg))",
+          4: "hsl(var(--heat-4))",
+          "4-fg": "hsl(var(--heat-4-fg))",
+        },
         status: {
           scheduled: "hsl(var(--status-scheduled))",
           "scheduled-bg": "hsl(var(--status-scheduled-bg))",
