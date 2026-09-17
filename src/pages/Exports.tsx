@@ -10,10 +10,7 @@ import { Link } from "react-router-dom";
 import {
   useCenters, usePatients, useUserSettings, defaultUserSettings,
 } from "@/hooks/useData";
-import {
-  fetchExportData, buildXlsx, buildCsv, buildJson, buildPdf,
-  downloadBlob, fileBaseName, periodTag, type ExportFilters,
-} from "@/lib/exporters";
+import type { ExportFilters } from "@/lib/exporters";
 import { toIsoDate } from "@/lib/format";
 
 const STATUSES = ["Programada","Realizada","Pendiente de cobro","Cobrada","Facturada","Cancelada"];
@@ -55,11 +52,14 @@ export default function Exports() {
     status: status !== "all" ? status : undefined,
   }), [from, to, centerId, patientId, status]);
 
-  const tag = periodTag(filters);
-
   const run = async (kind: string) => {
     try {
       setBusy(kind);
+      const {
+        fetchExportData, buildXlsx, buildCsv, buildJson, buildPdf,
+        downloadBlob, fileBaseName, periodTag,
+      } = await import("@/lib/exporters");
+      const tag = periodTag(filters);
       const data = await fetchExportData(filters, settings);
       if (kind === "xlsx") {
         downloadBlob(buildXlsx(data), `${fileBaseName("Completo", tag)}.xlsx`);
