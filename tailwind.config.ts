@@ -47,6 +47,11 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        streak: {
+          DEFAULT: "hsl(var(--streak))",
+          bg: "hsl(var(--streak-bg))",
+          glow: "hsl(var(--streak-glow))",
+        },
         status: {
           scheduled: "hsl(var(--status-scheduled))",
           "scheduled-bg": "hsl(var(--status-scheduled-bg))",
@@ -79,6 +84,8 @@ export default {
       backgroundImage: {
         "gradient-primary": "var(--gradient-primary)",
         "gradient-subtle": "var(--gradient-subtle)",
+        "gradient-streak": "var(--gradient-streak)",
+        "gradient-celebrate": "var(--gradient-celebrate)",
       },
       boxShadow: {
         card: "var(--shadow-card)",

@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { VoiceInterpretation } from "@/types/voice";
+import { toIsoDate } from "@/lib/format";
 
 const TYPE_MAP: Record<string, string> = {
   residencia: "Residencia",
@@ -201,7 +202,7 @@ export async function saveVoiceInterpretation(d: VoiceInterpretation): Promise<S
       if (typeof t.amountCharged === "number" && t.amountCharged > 0) {
         const { error } = await supabase.from("expenses").insert({
           user_id: userId,
-          expense_date: new Date().toISOString().slice(0, 10),
+          expense_date: toIsoDate(),
           category: "Tratamiento",
           amount: t.amountCharged,
           description: text,

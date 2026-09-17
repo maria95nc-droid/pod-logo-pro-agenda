@@ -5,12 +5,15 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Plus, Package, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { MicButton } from "@/components/voice/MicButton";
 import { useMaterials, useVisits, useCenters } from "@/hooks/useData";
+import { toIsoDate } from "@/lib/format";
 
 export default function MaterialPage() {
   const { data: materials = [] } = useMaterials();
   const { data: visits = [] } = useVisits();
   const { data: centers = [] } = useCenters();
-  const tomorrowIso = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowIso = toIsoDate(tomorrow);
   const tomorrowVisits = visits.filter((v) => v.visit_date === tomorrowIso);
   const lowStock = materials.filter((m) => Number(m.current_stock) <= Number(m.minimum_stock));
   const ok = materials.filter((m) => Number(m.current_stock) > Number(m.minimum_stock));

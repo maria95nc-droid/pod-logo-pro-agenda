@@ -13,4 +13,17 @@ export const formatDateLong = (d: Date | string) => {
 
 export const formatTime = (t: string) => t.slice(0, 5);
 
+/**
+ * Fecha en formato ISO `yyyy-mm-dd` usando el huso horario local.
+ * `Date#toISOString()` convierte a UTC y en España (UTC+1/+2) adelanta el día
+ * durante las últimas horas de la tarde/noche, lo que hacía que "Hoy" mostrase
+ * las visitas de mañana. Las fechas de `visits.visit_date` son fechas locales.
+ */
+export const toIsoDate = (d: Date = new Date()) => {
+  const y = d.getFullYear();
+  const m = `${d.getMonth() + 1}`.padStart(2, "0");
+  const day = `${d.getDate()}`.padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
 export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

@@ -1,10 +1,15 @@
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { formatEUR, formatDateLong, capitalize } from "@/lib/format";
+import { formatEUR, formatDateLong, capitalize, toIsoDate } from "@/lib/format";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useVisits, useCenters, usePatients, useMaterials, useInvalidateAll } from "@/hooks/useData";
+import { calculateStreak, isCompletedVisit } from "@/lib/streak";
+import { StreakBadge } from "@/components/StreakBadge";
+import { DayProgress } from "@/components/DayProgress";
+import { Celebration, type CelebrationTone } from "@/components/Celebration";
 import {
   Clock, MapPin, Users, Plus, AlertTriangle, Package, ArrowRight,
   CheckCircle2, Wallet, Navigation, Phone, ChevronRight, Loader2,
@@ -17,13 +22,24 @@ export default function Today() {
   const { data: materials = [] } = useMaterials();
   const invalidate = useInvalidateAll();
 
+  const [celebration, setCelebration] = useState<{ id: number; tone: CelebrationTone } | null>(null);
+  const burstId = useRef(0);
+  const celebrate = useCallback((tone: CelebrationTone) => {
+    burstId.current += 1;
+    setCelebration({ id: burstId.current, tone });
+  }, []);
+  const endCelebration = useCallback(() => setCelebration(null), []);
+
   const now = new Date();
-  const todayIso = now.toISOString().slice(0, 10);
+  const todayIso = toIsoDate(now);
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
   const todays = visits
     .filter((v) => v.visit_date === todayIso)
     .sort((a, b) => (a.start_time ?? "").localeCompare(b.start_time ?? ""));
+
+  const completedToday = todays.filter(isCompletedVisit).length;
+  const streak = useMemo(() => calculateStreak(visits), [visits]);
 
   const nextVisit =
     todays.find((v) => {
@@ -46,15 +62,21 @@ export default function Today() {
   return (
     <div className="space-y-5 animate-fade-in">
       <header>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
-          {capitalize(formatDateLong(now))}
-        </p>
-        <h1 className="mt-0.5 text-[26px] font-bold leading-tight tracking-tight">Hoy</h1>
-        <p className="text-sm text-muted-foreground">
-          {todays.length === 0
-            ? "Sin visitas programadas."
-            : `${todays.length} visita${todays.length > 1 ? "s" : ""} · ${patientsToday} pacientes`}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+              {capitalize(formatDateLong(now))}
+            </p>
+            <h1 className="mt-0.5 text-[26px] font-bold leading-tight tracking-tight">Hoy</h1>
+            <p className="text-sm text-muted-foreground">
+              {todays.length === 0
+                ? "Sin visitas programadas."
+                : `${todays.length} visita${todays.length > 1 ? "s" : ""} · ${patientsToday} pacientes`}
+            </p>
+          </div>
+          <StreakBadge days={streak.days} countsToday={streak.countsToday} />
+        </div>
+        {todays.length > 0 && <DayProgress completed={completedToday} total={todays.length} className="mt-3.5" />}
       </header>
 
       {nextVisit ? (
@@ -63,10 +85,13 @@ export default function Today() {
           center={centers.find((c) => c.id === nextVisit.center_id)}
           patients={patients}
           onAfterAction={invalidate}
+          onCelebrate={celebrate}
         />
       ) : (
         <EmptyStateCard />
       )}
+
+      <Celebration burstId={celebration?.id ?? null} tone={celebration?.tone} onDone={endCelebration} />
 
       {todays.length > 0 && (
         <div className="grid grid-cols-2 gap-2.5">
@@ -96,18 +121,31 @@ export default function Today() {
           <div className="space-y-2">
             {todays.filter((v) => v.id !== nextVisit?.id).map((v) => {
               const c = centers.find((x) => x.id === v.center_id);
+              const done = isCompletedVisit(v);
               return (
                 <Link key={v.id} to={`/visita/${v.id}`}>
                   <Card className="shadow-card transition-smooth active:scale-[0.99] hover:shadow-elevated">
                     <CardContent className="flex items-center gap-3 p-3">
-                      <div className="flex flex-col items-center rounded-lg bg-muted px-2.5 py-1.5 text-center">
-                        <span className="text-[10px] font-semibold text-muted-foreground">{v.start_time}</span>
+                      <div
+                        className={`flex flex-col items-center rounded-lg px-2.5 py-1.5 text-center ${
+                          done ? "bg-status-done-bg text-status-done" : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        <span className="text-[10px] font-semibold">{v.start_time}</span>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold">{c?.name}</p>
+                        <p className="flex items-center gap-1.5 truncate text-sm font-semibold">
+                          {done && (
+                            <>
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-status-done" aria-hidden="true" />
+                              <span className="sr-only">Completada:</span>
+                            </>
+                          )}
+                          <span className="truncate">{c?.name}</span>
+                        </p>
                         <p className="text-xs text-muted-foreground">{v.patients_count} pac. · {formatEUR(Number(v.gross_amount))}</p>
                       </div>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                     </CardContent>
                   </Card>
                 </Link>
@@ -162,7 +200,7 @@ export default function Today() {
   );
 }
 
-function NextVisitCard({ visit, center, patients, onAfterAction }: any) {
+function NextVisitCard({ visit, center, patients, onAfterAction, onCelebrate }: any) {
   const visitPatients: any[] = (visit.visit_patients ?? [])
     .map((vp: any) => ({
       vp,
@@ -175,7 +213,7 @@ function NextVisitCard({ visit, center, patients, onAfterAction }: any) {
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const diff = startMin - nowMin;
   const relative =
-    visit.visit_date === now.toISOString().slice(0, 10)
+    visit.visit_date === toIsoDate(now)
       ? diff > 60 ? `En ${Math.floor(diff / 60)}h ${diff % 60}m`
       : diff > 0 ? `En ${diff} min`
       : diff > -60 ? "En curso"
@@ -186,16 +224,35 @@ function NextVisitCard({ visit, center, patients, onAfterAction }: any) {
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${center.address}, ${center.city ?? ""}`)}`
     : null;
 
+  // Evita dobles envíos si se toca el botón dos veces seguidas en el móvil.
+  const [busy, setBusy] = useState<"done" | "paid" | null>(null);
+
   const markDone = async () => {
+    if (busy) return;
+    setBusy("done");
     const { error } = await supabase.from("visits").update({ status: "Realizada" }).eq("id", visit.id);
+    setBusy(null);
     if (error) return toast.error(error.message);
+    onCelebrate?.("done");
     toast.success("Visita marcada como realizada");
     onAfterAction();
   };
+
   const markPaid = async () => {
+    if (busy) return;
+    setBusy("paid");
     const { error } = await supabase.from("visits").update({ status: "Cobrada" }).eq("id", visit.id);
-    if (error) return toast.error(error.message);
-    await supabase.from("visit_patients").update({ payment_status: "Cobrado" }).eq("visit_id", visit.id);
+    if (error) {
+      setBusy(null);
+      return toast.error(error.message);
+    }
+    const { error: patientsError } = await supabase
+      .from("visit_patients")
+      .update({ payment_status: "Cobrado" })
+      .eq("visit_id", visit.id);
+    setBusy(null);
+    if (patientsError) return toast.error(patientsError.message);
+    onCelebrate?.("paid");
     toast.success("Cobro registrado");
     onAfterAction();
   };
@@ -277,8 +334,20 @@ function NextVisitCard({ visit, center, patients, onAfterAction }: any) {
 
       <div className="border-t border-border bg-card p-3">
         <div className="grid grid-cols-3 gap-2">
-          <QuickAction icon={<CheckCircle2 className="h-[18px] w-[18px]" />} label="Realizada" onClick={markDone} variant="primary" />
-          <QuickAction icon={<Wallet className="h-[18px] w-[18px]" />} label="Cobro" onClick={markPaid} />
+          <QuickAction
+            icon={busy === "done" ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <CheckCircle2 className="h-[18px] w-[18px]" />}
+            label="Realizada"
+            onClick={markDone}
+            variant="primary"
+            disabled={busy !== null}
+          />
+          <QuickAction
+            icon={busy === "paid" ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Wallet className="h-[18px] w-[18px]" />}
+            label="Cobro"
+            onClick={markPaid}
+            variant="streak"
+            disabled={busy !== null}
+          />
           <QuickAction as={Link} to="/pacientes/nuevo" icon={<Plus className="h-[18px] w-[18px]" />} label="Paciente" />
         </div>
         <Button asChild variant="ghost" size="sm" className="mt-2 h-9 w-full text-xs text-muted-foreground">
@@ -289,15 +358,30 @@ function NextVisitCard({ visit, center, patients, onAfterAction }: any) {
   );
 }
 
-function QuickAction({ icon, label, onClick, variant, as, to }: any) {
-  const base = "flex h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-semibold transition-smooth active:scale-[0.97]";
-  const style = variant === "primary"
-    ? "bg-primary text-primary-foreground shadow-primary hover:bg-primary/95"
-    : "bg-secondary text-secondary-foreground hover:bg-muted";
+const QUICK_ACTION_STYLES: Record<string, string> = {
+  primary: "bg-primary text-primary-foreground shadow-primary hover:bg-primary/95",
+  streak: "bg-streak-bg text-streak ring-1 ring-inset ring-streak/20 hover:bg-gradient-streak",
+  default: "bg-secondary text-secondary-foreground hover:bg-muted",
+};
+
+function QuickAction({ icon, label, onClick, variant, as, to, disabled }: any) {
+  const base =
+    "flex h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-semibold transition-smooth active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+  const style = QUICK_ACTION_STYLES[variant] ?? QUICK_ACTION_STYLES.default;
   if (as && to) {
     return <Link to={to} className={`${base} ${style}`}>{icon}{label}</Link>;
   }
-  return <button onClick={onClick} className={`${base} ${style}`}>{icon}{label}</button>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`${base} ${style} disabled:pointer-events-none disabled:opacity-60`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
 }
 
 function EmptyStateCard() {

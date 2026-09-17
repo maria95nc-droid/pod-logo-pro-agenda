@@ -4,6 +4,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/StatusBadge";
+import { StreakBadge } from "@/components/StreakBadge";
+import { calculateStreak } from "@/lib/streak";
 import { formatEUR } from "@/lib/format";
 import {
   useVisits,
@@ -108,10 +110,16 @@ export default function Finance() {
     invalidate();
   };
 
+  const streak = useMemo(() => calculateStreak(visits), [visits]);
+  const monthProgress = calc.monthVisits.length > 0 ? Math.round((calc.done / calc.monthVisits.length) * 100) : 0;
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Finanzas</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <h1 className="text-2xl font-bold">Finanzas</h1>
+          <StreakBadge days={streak.days} countsToday={streak.countsToday} compact />
+        </div>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => { invalidate(); toast.success("Finanzas recalculadas"); }}>
             <RefreshCw className="h-4 w-4" /> Recalcular
@@ -130,6 +138,22 @@ export default function Finance() {
             <div><p className="text-[11px] opacity-80">Visitas</p><p className="font-semibold">{calc.done}/{calc.monthVisits.length}</p></div>
             <div><p className="text-[11px] opacity-80">IRPF</p><p className="font-semibold">{calc.irpfPct}%</p></div>
           </div>
+          {calc.monthVisits.length > 0 && (
+            <div
+              role="progressbar"
+              aria-label="Visitas completadas este mes"
+              aria-valuemin={0}
+              aria-valuemax={calc.monthVisits.length}
+              aria-valuenow={calc.done}
+              aria-valuetext={`${calc.done} de ${calc.monthVisits.length} visitas del mes completadas`}
+              className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/25"
+            >
+              <span
+                className="block h-full rounded-full bg-streak-glow transition-[width] duration-700 ease-out"
+                style={{ width: `${monthProgress}%` }}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 

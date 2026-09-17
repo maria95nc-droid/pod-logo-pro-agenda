@@ -4,13 +4,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatEUR } from "@/lib/format";
+import { StreakBadge } from "@/components/StreakBadge";
+import { formatEUR, toIsoDate } from "@/lib/format";
 import { useVisits, useCenters } from "@/hooks/useData";
+import { calculateStreak, isCompletedVisit } from "@/lib/streak";
 import { ChevronLeft, ChevronRight, Plus, Clock, Users } from "lucide-react";
 
 const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-const iso = (d: Date) => d.toISOString().slice(0, 10);
+const iso = (d: Date) => toIsoDate(d);
 const startOfWeek = (d: Date) => { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0,0,0,0); return x; };
 const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 
@@ -37,10 +39,15 @@ export default function Agenda() {
   const shift = (days: number) => setCursor((c) => addDays(c, days));
   const shiftMonth = (n: number) => setCursor((c) => new Date(c.getFullYear(), c.getMonth() + n, 1));
 
+  const streak = useMemo(() => calculateStreak(visits), [visits]);
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Agenda</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <h1 className="text-2xl font-bold">Agenda</h1>
+          <StreakBadge days={streak.days} countsToday={streak.countsToday} compact />
+        </div>
         <Button asChild size="sm"><Link to="/visita/nueva"><Plus className="h-4 w-4" /> Nueva</Link></Button>
       </div>
 
@@ -151,13 +158,20 @@ export default function Agenda() {
                   return (
                     <button
                       key={iso(d)}
+                      type="button"
                       onClick={() => { setCursor(d); setTab("dia"); }}
+                      aria-label={`${d.getDate()} de ${MONTHS[d.getMonth()]}: ${list.length === 0 ? "sin visitas" : `${list.length} visita${list.length > 1 ? "s" : ""}`}`}
                       className={`relative aspect-square rounded-md p-1 text-xs transition-smooth hover:bg-muted ${isCurrent ? "text-foreground" : "text-muted-foreground/40"} ${isToday ? "bg-primary-soft font-bold text-primary" : ""}`}
                     >
-                      <span className="absolute top-1 left-1">{d.getDate()}</span>
+                      <span aria-hidden="true" className="absolute left-1 top-1">{d.getDate()}</span>
                       {list.length > 0 && (
-                        <span className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
-                          {list.slice(0,3).map((_, i) => <span key={i} className="h-1 w-1 rounded-full bg-primary" />)}
+                        <span className="absolute bottom-1 left-1/2 flex -translate-x-1/2 gap-0.5">
+                          {list.slice(0, 3).map((v) => (
+                            <span
+                              key={v.id}
+                              className={`h-1 w-1 rounded-full ${isCompletedVisit(v) ? "bg-streak" : "bg-primary"}`}
+                            />
+                          ))}
                         </span>
                       )}
                     </button>
@@ -184,6 +198,7 @@ export default function Agenda() {
               return (
                 <button
                   key={m}
+                  type="button"
                   onClick={() => { setCursor(new Date(cursor.getFullYear(), i, 1)); setTab("mes"); }}
                   className="rounded-xl border border-border bg-card p-3 text-left shadow-card transition-smooth hover:shadow-elevated hover:-translate-y-0.5"
                 >

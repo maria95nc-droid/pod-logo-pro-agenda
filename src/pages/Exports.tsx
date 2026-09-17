@@ -14,10 +14,14 @@ import {
   fetchExportData, buildXlsx, buildCsv, buildJson, buildPdf,
   downloadBlob, fileBaseName, periodTag, type ExportFilters,
 } from "@/lib/exporters";
+import { toIsoDate } from "@/lib/format";
 
 const STATUSES = ["Programada","Realizada","Pendiente de cobro","Cobrada","Facturada","Cancelada"];
 
-function todayISO(d = new Date()) { return d.toISOString().slice(0, 10); }
+// Fecha civil local: con `toISOString()` una medianoche local se convertía al
+// día anterior en España, así que los rangos de exportación se desplazaban un
+// día (el último día del mes quedaba fuera del informe para la gestoría).
+const todayISO = toIsoDate;
 function startOfMonth() { const d = new Date(); return todayISO(new Date(d.getFullYear(), d.getMonth(), 1)); }
 function endOfMonth() { const d = new Date(); return todayISO(new Date(d.getFullYear(), d.getMonth() + 1, 0)); }
 function startOfYear() { return `${new Date().getFullYear()}-01-01`; }

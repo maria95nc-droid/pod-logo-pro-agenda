@@ -5,6 +5,7 @@
 // `interpret-voice`, para que el resto de la app no cambie.
 // ============================================================
 import type { VoiceInterpretation, VoiceIntent } from "@/types/voice";
+import { toIsoDate } from "@/lib/format";
 
 const NUM_WORDS: Record<string, number> = {
   cero: 0, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6,
@@ -91,7 +92,9 @@ function extractTime(text: string): string | undefined {
 function extractDate(text: string): string | undefined {
   const t = text.toLowerCase();
   const today = new Date();
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  // Fecha civil local: `toISOString()` sobre una medianoche local devuelve el
+  // día anterior en España (UTC+1/+2) y guardaba visitas con un día menos.
+  const fmt = toIsoDate;
   if (/\bhoy\b/.test(t)) return fmt(today);
   if (/\bpasado\s+mañana\b/.test(t)) {
     const d = new Date(today); d.setDate(d.getDate() + 2); return fmt(d);

@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { formatEUR } from "@/lib/format";
+import { formatEUR, toIsoDate } from "@/lib/format";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, Save, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,7 +25,7 @@ export default function NewVisit() {
   const invalidate = useInvalidateAll();
   const [busy, setBusy] = useState(false);
   const [centerId, setCenterId] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(toIsoDate());
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("12:00");
   const [selectedPatients, setSelectedPatients] = useState<Record<string, number>>({});
