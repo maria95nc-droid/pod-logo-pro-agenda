@@ -8,9 +8,11 @@ import {
   isFullyCancelledDay,
   isUnbilledDay,
   maxGross,
+  nearestActiveKey,
   sumDays,
   type AgendaVisit,
 } from "@/lib/agendaStats";
+import { monthLabel } from "@/lib/calendar";
 
 const visit = (overrides: Partial<AgendaVisit> & Pick<AgendaVisit, "id" | "visit_date">): AgendaVisit => ({
   start_time: "09:00:00",
@@ -86,6 +88,43 @@ describe("buildMonthStats / sumDays / maxGross", () => {
   it("devuelve el mejor día del periodo", () => {
     expect(maxGross(dayStats, ["2026-08-10", "2026-08-24"])).toBe(300);
     expect(maxGross(dayStats, ["2026-01-01"])).toBe(0);
+  });
+});
+
+describe("nearestActiveKey", () => {
+  const dayStats = buildDayStats([
+    visit({ id: "1", visit_date: "2026-06-10" }),
+    visit({ id: "2", visit_date: "2026-08-24" }),
+  ]);
+  const months = buildMonthStats(dayStats);
+
+  it("propone el último mes trabajado cuando el mes visible está vacío", () => {
+    expect(nearestActiveKey(months, "2026-09")).toBe("2026-08");
+  });
+
+  it("incluye el propio periodo si tiene actividad", () => {
+    expect(nearestActiveKey(months, "2026-08")).toBe("2026-08");
+  });
+
+  it("mira hacia adelante sólo si no hay nada en el pasado", () => {
+    expect(nearestActiveKey(months, "2026-01")).toBe("2026-06");
+  });
+
+  it("funciona igual con claves de día", () => {
+    expect(nearestActiveKey(dayStats, "2026-09-18")).toBe("2026-08-24");
+    expect(nearestActiveKey(new Map(), "2026-09-18")).toBeNull();
+  });
+});
+
+describe("monthLabel", () => {
+  it("convierte la clave de mes en texto legible sin pasar por Date", () => {
+    expect(monthLabel("2026-08")).toBe("Agosto 2026");
+    expect(monthLabel("2026-01")).toBe("Enero 2026");
+  });
+
+  it("devuelve la clave tal cual si no es válida", () => {
+    expect(monthLabel("2026-13")).toBe("2026-13");
+    expect(monthLabel("")).toBe("");
   });
 });
 

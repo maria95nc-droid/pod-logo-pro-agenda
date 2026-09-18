@@ -10,6 +10,17 @@ export const MONTHS = [
 
 export const MONTHS_SHORT = MONTHS.map((m) => m.slice(0, 3));
 
+/**
+ * «2026-08» → «Agosto 2026». Trabaja sobre la cadena, nunca sobre un `Date`:
+ * `new Date("2026-08")` se interpreta en UTC y podría cambiar de mes.
+ */
+export const monthLabel = (monthKey: string): string => {
+  const [year, month] = monthKey.split("-");
+  const index = Number(month) - 1;
+  if (!year || !Number.isInteger(index) || index < 0 || index > 11) return monthKey;
+  return `${MONTHS[index]} ${year}`;
+};
+
 /** Índice 0-6 con el lunes en 0. */
 export const weekdayIndex = (d: Date) => (d.getDay() + 6) % 7;
 

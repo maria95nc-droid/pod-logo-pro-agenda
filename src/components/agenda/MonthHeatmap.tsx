@@ -1,11 +1,16 @@
+import { Fragment } from "react";
 import { Ban, Hourglass } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatEUR, formatEURCompact, formatDateLong, toIsoDate } from "@/lib/format";
 import { WEEKDAYS } from "@/lib/calendar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { DayOrigins } from "@/components/agenda/DayOrigins";
+import type { CenterInfo } from "@/lib/centers";
 import {
   heatLevel,
   isFullyCancelledDay,
   isUnbilledDay,
+  type AgendaVisit,
   type DayStats,
   type HeatLevel,
 } from "@/lib/agendaStats";
@@ -16,6 +21,9 @@ interface MonthHeatmapProps {
   /** Mes visible (0-11): el resto de celdas se pintan como contexto. */
   month: number;
   dayStats: ReadonlyMap<string, DayStats>;
+  /** Visitas de cada día: alimentan el desglose de origen al pasar el ratón. */
+  visitsByDay: ReadonlyMap<string, AgendaVisit[]>;
+  centers: ReadonlyMap<string, CenterInfo>;
   /** Mejor día del mes visible: define el nivel 4 de la escala. */
   maxGross: number;
   todayIso: string;
@@ -42,7 +50,16 @@ const LEGEND_SWATCHES = ["bg-heat-1", "bg-heat-2", "bg-heat-3", "bg-heat-4"];
  * visitas pendientes de facturar por la gestora) se marca con reloj de arena y
  * fondo ámbar punteado: nunca con verde, que daría a entender que se cobró.
  */
-export function MonthHeatmap({ days, month, dayStats, maxGross, todayIso, onSelectDay }: MonthHeatmapProps) {
+export function MonthHeatmap({
+  days,
+  month,
+  dayStats,
+  visitsByDay,
+  centers,
+  maxGross,
+  todayIso,
+  onSelectDay,
+}: MonthHeatmapProps) {
   return (
     <div>
       <div className="mb-1.5 grid grid-cols-7 gap-1 text-center" aria-hidden="true">
@@ -75,9 +92,10 @@ export function MonthHeatmap({ days, month, dayStats, maxGross, todayIso, onSele
                   ? `${dateLabel}: ${count} visita${plural}, importe pendiente de facturar`
                   : `${dateLabel}: ${count} visita${plural}, ${formatEUR(stats!.gross)}`;
 
-          return (
+          const dayVisits = visitsByDay.get(key) ?? [];
+
+          const cell = (
             <button
-              key={key}
               type="button"
               onClick={() => onSelectDay(day)}
               aria-label={label}
@@ -122,12 +140,30 @@ export function MonthHeatmap({ days, month, dayStats, maxGross, todayIso, onSele
               )}
             </button>
           );
+
+          // Sin visitas no hay nada que desglosar: se evita montar 42 tooltips.
+          if (dayVisits.length === 0) return <Fragment key={key}>{cell}</Fragment>;
+
+          return (
+            <Tooltip key={key} delayDuration={150}>
+              <TooltipTrigger asChild>{cell}</TooltipTrigger>
+              {/* El contenido sólo se monta al abrirse. En móvil el toque navega
+                  al detalle del día, que es donde cabe la información completa. */}
+              <TooltipContent side="top" align="center" className="px-3 py-2">
+                <DayOrigins visits={dayVisits} centers={centers} title={dateLabel} />
+              </TooltipContent>
+            </Tooltip>
+          );
         })}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[10px] text-muted-foreground">
         <p className="sr-only">
-          La intensidad del color de cada día indica su ingreso comparado con el mejor día del mes.
+          La intensidad del color de cada día indica su ingreso comparado con el mejor día del mes. Abre un día para
+          ver de qué centro o domicilio sale cada importe.
+        </p>
+        <p className="hidden basis-full sm:block">
+          Pasa el ratón por un día para ver de dónde sale el importe; púlsalo para abrir el detalle.
         </p>
         <p className="inline-flex items-center gap-1.5">
           <span

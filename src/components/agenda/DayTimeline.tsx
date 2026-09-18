@@ -2,17 +2,20 @@ import { Link } from "react-router-dom";
 import { ChevronRight, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatEUR, formatTime } from "@/lib/format";
+import { CenterLabel } from "@/components/CenterLabel";
+import { VisitAmount } from "@/components/VisitAmount";
+import { formatTime } from "@/lib/format";
 import { minutesOfTime } from "@/lib/calendar";
 import { isCompletedVisit } from "@/lib/streak";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { dayKey, type AgendaVisit } from "@/lib/agendaStats";
+import { centerInfo, type CenterInfo } from "@/lib/centers";
+import { CANCELLED_STATUS, dayKey, type AgendaVisit } from "@/lib/agendaStats";
 import type { VisitStatus } from "@/types";
 
 interface DayTimelineProps {
   /** Visitas del día, ya ordenadas por hora de inicio. */
   visits: readonly AgendaVisit[];
-  centerNames: ReadonlyMap<string, string>;
+  centers: ReadonlyMap<string, CenterInfo>;
   /** Minutos desde medianoche, o `null` si el día visible no es hoy. */
   nowMinutes: number | null;
 }
@@ -34,7 +37,7 @@ function dotTone(visit: AgendaVisit): string {
  * real, con la hora de inicio como ancla tipográfica a la izquierda. En el día
  * de hoy se intercala un marcador «Ahora» en su posición cronológica.
  */
-export function DayTimeline({ visits, centerNames, nowMinutes }: DayTimelineProps) {
+export function DayTimeline({ visits, centers, nowMinutes }: DayTimelineProps) {
   const prefersReducedMotion = usePrefersReducedMotion();
 
   // Posición del marcador «Ahora»: primera visita que todavía no ha empezado.
@@ -59,7 +62,11 @@ export function DayTimeline({ visits, centerNames, nowMinutes }: DayTimelineProp
       rows.push(<NowRow key="now-marker" time={nowLabel} hasNext />);
     }
 
-    const centerName = (visit.center_id && centerNames.get(visit.center_id)) || "Sin centro";
+    const center = centerInfo(centers, visit.center_id);
+    const gross = Number(visit.gross_amount) || 0;
+    const cancelled = visit.status === CANCELLED_STATUS;
+    const unbilled = !cancelled && gross <= 0;
+    const patients = Number(visit.patients_count) || 0;
     const isLast = index === visits.length - 1 && nowPosition !== visits.length;
     const delay = prefersReducedMotion ? 0 : Math.min(index * 40, MAX_STAGGER_MS);
 
@@ -101,16 +108,21 @@ export function DayTimeline({ visits, centerNames, nowMinutes }: DayTimelineProp
         >
           <div className="flex items-center gap-2 p-3">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{centerName}</p>
+              <CenterLabel center={center} showType className="text-sm" />
               <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                 <StatusBadge status={visit.status as VisitStatus} className="text-[10px]" />
-                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <Users className="h-3 w-3 shrink-0" aria-hidden="true" />
-                  <span className="tabular-nums">{visit.patients_count}</span>
-                  <span className="sr-only">pacientes</span>
-                </span>
-                <span className="text-xs font-semibold tabular-nums">{formatEUR(Number(visit.gross_amount))}</span>
+                {patients > 0 && (
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <Users className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    <span className="tabular-nums">{patients}</span>
+                    <span className="sr-only">pacientes</span>
+                  </span>
+                )}
+                <VisitAmount gross={gross} unbilled={unbilled} className="text-xs" />
               </div>
+              {unbilled && visit.general_notes && (
+                <p className="mt-1.5 line-clamp-2 text-[11px] text-muted-foreground">{visit.general_notes}</p>
+              )}
             </div>
             <ChevronRight
               className="h-4 w-4 shrink-0 text-muted-foreground transition-smooth group-hover:translate-x-0.5"

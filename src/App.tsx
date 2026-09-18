@@ -12,6 +12,7 @@ import Agenda from "@/pages/Agenda";
 import Patients from "@/pages/Patients";
 import MaterialPage from "@/pages/Material";
 import Finance from "@/pages/Finance";
+import Income from "@/pages/Income";
 import Exports from "@/pages/Exports";
 import Settings from "@/pages/Settings";
 import NewVisit from "@/pages/NewVisit";
@@ -43,6 +44,7 @@ const App = () => (
               <Route path="/material" element={<MaterialPage />} />
               <Route path="/material/nuevo" element={<NewMaterial />} />
               <Route path="/finanzas" element={<Finance />} />
+              <Route path="/finanzas/movimientos" element={<Income />} />
               <Route path="/exportar" element={<Exports />} />
               <Route path="/configuracion" element={<Settings />} />
               <Route path="/visita/nueva" element={<NewVisit />} />

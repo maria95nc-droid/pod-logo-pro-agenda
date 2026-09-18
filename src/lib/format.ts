@@ -40,4 +40,15 @@ export const toIsoDate = (d: Date = new Date()) => {
   return `${y}-${m}-${day}`;
 };
 
+/**
+ * Inversa de `toIsoDate`: `yyyy-mm-dd` → `Date` a medianoche **local**.
+ * `new Date("2026-08-24")` la interpretaría en UTC, que en España es el día
+ * anterior a las 22:00, con el consiguiente salto de día.
+ */
+export const fromIsoDate = (iso: string): Date => {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return new Date(NaN);
+  return new Date(y, m - 1, d);
+};
+
 export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

@@ -5,13 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StreakBadge } from "@/components/StreakBadge";
+import { CenterLabel } from "@/components/CenterLabel";
+import { VisitAmount } from "@/components/VisitAmount";
 import { PeriodNav } from "@/components/agenda/PeriodNav";
 import { MonthHeatmap } from "@/components/agenda/MonthHeatmap";
 import { DayTimeline } from "@/components/agenda/DayTimeline";
 import { ActivityBar } from "@/components/agenda/ActivityBar";
-import { formatEUR, formatTime, toIsoDate } from "@/lib/format";
+import { formatDate, formatEUR, formatTime, fromIsoDate, toIsoDate } from "@/lib/format";
 import { useVisits, useCenters } from "@/hooks/useData";
 import { calculateStreak } from "@/lib/streak";
+import { buildCenterIndex, centerInfo } from "@/lib/centers";
 import {
   MONTHS,
   MONTHS_SHORT,
@@ -19,10 +22,12 @@ import {
   addDays,
   isoKeys,
   monthGrid,
+  monthLabel,
   startOfWeek,
   weekdayIndex,
 } from "@/lib/calendar";
 import {
+  CANCELLED_STATUS,
   EMPTY_DAY_STATS,
   EMPTY_PERIOD_STATS,
   buildDayStats,
@@ -30,12 +35,13 @@ import {
   buildVisitsByDay,
   isUnbilledDay,
   maxGross,
+  nearestActiveKey,
   sumDays,
   type AgendaVisit,
   type PeriodStats,
 } from "@/lib/agendaStats";
 import { cn } from "@/lib/utils";
-import { Plus, Clock, Users, Trophy, Loader2, CalendarCheck } from "lucide-react";
+import { Plus, Clock, Users, Trophy, Loader2, CalendarCheck, CalendarSearch, ReceiptText } from "lucide-react";
 import type { VisitStatus } from "@/types";
 
 /** Resumen textual de un periodo, en una línea y sin abreviar los importes. */
@@ -66,7 +72,7 @@ export default function Agenda() {
   const dayStats = useMemo(() => buildDayStats(visits as AgendaVisit[]), [visits]);
   const visitsByDay = useMemo(() => buildVisitsByDay(visits as AgendaVisit[]), [visits]);
   const monthStats = useMemo(() => buildMonthStats(dayStats), [dayStats]);
-  const centerNames = useMemo(() => new Map(centers.map((c) => [c.id, c.name] as const)), [centers]);
+  const centerIndex = useMemo(() => buildCenterIndex(centers), [centers]);
   const streak = useMemo(() => calculateStreak(visits), [visits]);
 
   const cursorIso = toIsoDate(cursor);
@@ -93,6 +99,20 @@ export default function Agenda() {
   );
   const monthTotals = useMemo(() => sumDays(dayStats, monthOwnKeys), [dayStats, monthOwnKeys]);
   const monthMax = useMemo(() => maxGross(dayStats, monthOwnKeys), [dayStats, monthOwnKeys]);
+  const visibleMonthKey = `${monthYear}-${String(monthIndex + 1).padStart(2, "0")}`;
+
+  // ── Atajos a periodos con actividad ────────────────────────────────────────
+  // La agenda abre siempre en el día de hoy: en un mes sin visitas la pantalla
+  // se quedaba en blanco y había que adivinar cuántas veces pulsar la flecha
+  // para llegar al último mes trabajado.
+  const suggestedMonth = useMemo(
+    () => (monthTotals.visits === 0 ? nearestActiveKey(monthStats, visibleMonthKey) : null),
+    [monthStats, monthTotals.visits, visibleMonthKey],
+  );
+  const suggestedDay = useMemo(
+    () => (dayVisits.length === 0 ? nearestActiveKey(dayStats, cursorIso) : null),
+    [dayStats, dayVisits.length, cursorIso],
+  );
 
   // ── Año ────────────────────────────────────────────────────────────────────
   const year = cursor.getFullYear();
@@ -128,6 +148,11 @@ export default function Agenda() {
   const goToDay = (day: Date) => {
     setCursor(day);
     setTab("dia");
+  };
+  const goToIsoDay = (iso: string) => goToDay(fromIsoDate(iso));
+  const goToMonthKey = (key: string) => {
+    const [y, m] = key.split("-").map(Number);
+    setCursor(new Date(y, m - 1, 1));
   };
 
   if (isLoading) {
@@ -189,11 +214,14 @@ export default function Agenda() {
           />
 
           {dayVisits.length === 0 ? (
-            <EmptyDay />
+            <EmptyDay
+              suggestion={suggestedDay}
+              onGoToSuggestion={suggestedDay ? () => goToIsoDay(suggestedDay) : undefined}
+            />
           ) : (
             <DayTimeline
               visits={dayVisits}
-              centerNames={centerNames}
+              centers={centerIndex}
               nowMinutes={cursorIso === todayIso ? nowMinutes : null}
             />
           )}
@@ -267,24 +295,47 @@ export default function Agenda() {
                           <p className="mt-1.5 text-[11px] text-muted-foreground">
                             {stats.visits} visita{stats.visits > 1 ? "s" : ""} · {stats.patients} pacientes
                           </p>
+                          {/* Cada visita muestra su origen y su importe: la cifra
+                              del día deja de ser un número sin explicación. */}
                           <ul className="mt-2 space-y-1">
-                            {list.map((visit) => (
-                              <li key={visit.id}>
-                                <Link
-                                  to={`/visita/${visit.id}`}
-                                  className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5 text-xs transition-smooth hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                >
-                                  <Clock className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-                                  <span className="font-medium tabular-nums">
-                                    {visit.start_time ? formatTime(visit.start_time) : "--:--"}
-                                  </span>
-                                  <span className="min-w-0 flex-1 truncate">
-                                    {(visit.center_id && centerNames.get(visit.center_id)) || "Sin centro"}
-                                  </span>
-                                  <StatusBadge status={visit.status as VisitStatus} className="shrink-0 text-[10px]" />
-                                </Link>
-                              </li>
-                            ))}
+                            {list.map((visit) => {
+                              const gross = Number(visit.gross_amount) || 0;
+                              const visitCancelled = visit.status === CANCELLED_STATUS;
+                              const patients = Number(visit.patients_count) || 0;
+                              return (
+                                <li key={visit.id}>
+                                  <Link
+                                    to={`/visita/${visit.id}`}
+                                    className="block rounded-md bg-muted/50 px-2 py-1.5 text-xs transition-smooth hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  >
+                                    <span className="flex items-center gap-2">
+                                      <Clock className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                                      <span className="font-medium tabular-nums">
+                                        {visit.start_time ? formatTime(visit.start_time) : "--:--"}
+                                      </span>
+                                      <CenterLabel
+                                        center={centerInfo(centerIndex, visit.center_id)}
+                                        className="min-w-0 flex-1"
+                                      />
+                                    </span>
+                                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 pl-5">
+                                      <StatusBadge
+                                        status={visit.status as VisitStatus}
+                                        className="shrink-0 text-[10px]"
+                                      />
+                                      {patients > 0 && (
+                                        <span className="tabular-nums text-muted-foreground">{patients} pac.</span>
+                                      )}
+                                      <VisitAmount
+                                        gross={gross}
+                                        unbilled={!visitCancelled && gross <= 0}
+                                        className="text-xs"
+                                      />
+                                    </span>
+                                  </Link>
+                                </li>
+                              );
+                            })}
                           </ul>
                         </>
                       )}
@@ -310,18 +361,41 @@ export default function Agenda() {
                 : `${monthTotals.days} día${monthTotals.days > 1 ? "s" : ""} · ${summarize(monthTotals)}`
             }
           />
+          {suggestedMonth && (
+            <Card className="border-dashed border-streak/50 bg-streak-bg shadow-card">
+              <CardContent className="flex flex-wrap items-center justify-between gap-2 p-3">
+                <p className="text-xs text-foreground">
+                  No hay visitas en {MONTHS[monthIndex].toLowerCase()} de {monthYear}.
+                </p>
+                <Button size="sm" variant="outline" className="bg-card" onClick={() => goToMonthKey(suggestedMonth)}>
+                  <CalendarSearch className="h-4 w-4" aria-hidden="true" />
+                  Ir a {monthLabel(suggestedMonth).toLowerCase()}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="shadow-card">
             <CardContent className="p-3">
               <MonthHeatmap
                 days={monthDays}
                 month={monthIndex}
                 dayStats={dayStats}
+                visitsByDay={visitsByDay}
+                centers={centerIndex}
                 maxGross={monthMax}
                 todayIso={todayIso}
                 onSelectDay={goToDay}
               />
             </CardContent>
           </Card>
+
+          <Button asChild variant="outline" className="h-11 w-full">
+            <Link to={`/finanzas/movimientos?mes=${visibleMonthKey}`}>
+              <ReceiptText className="h-4 w-4" aria-hidden="true" />
+              Ver de dónde sale cada importe
+            </Link>
+          </Button>
         </TabsContent>
 
         {/* ── Año: comparativa por mes ───────────────────────────────────── */}
@@ -385,7 +459,14 @@ export default function Agenda() {
   );
 }
 
-function EmptyDay() {
+function EmptyDay({
+  suggestion,
+  onGoToSuggestion,
+}: {
+  /** Día con visitas más cercano, `yyyy-mm-dd`. */
+  suggestion: string | null;
+  onGoToSuggestion?: () => void;
+}) {
   return (
     <Card className="border-dashed shadow-card">
       <CardContent className="flex flex-col items-center gap-2 p-8 text-center">
@@ -393,11 +474,19 @@ function EmptyDay() {
           <Users className="h-5 w-5" aria-hidden="true" />
         </div>
         <p className="font-semibold">Sin visitas este día</p>
-        <Button asChild size="sm" variant="outline" className="mt-1">
-          <Link to="/visita/nueva">
-            <Plus className="h-4 w-4" aria-hidden="true" /> Añadir visita
-          </Link>
-        </Button>
+        <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+          {suggestion && onGoToSuggestion && (
+            <Button size="sm" variant="outline" onClick={onGoToSuggestion}>
+              <CalendarSearch className="h-4 w-4" aria-hidden="true" />
+              Ir al {formatDate(fromIsoDate(suggestion))}
+            </Button>
+          )}
+          <Button asChild size="sm" variant="outline">
+            <Link to="/visita/nueva">
+              <Plus className="h-4 w-4" aria-hidden="true" /> Añadir visita
+            </Link>
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

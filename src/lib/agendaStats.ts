@@ -21,6 +21,8 @@ export interface AgendaVisit {
   gross_amount: number;
   patients_count: number;
   center_id?: string | null;
+  /** Notas de la visita: en las importadas dicen qué falta por completar. */
+  general_notes?: string | null;
 }
 
 export interface DayStats {
@@ -139,6 +141,33 @@ export function sumDays(dayStats: ReadonlyMap<string, DayStats>, keys: readonly 
     total.days += 1;
   }
   return total;
+}
+
+/**
+ * Clave con actividad más cercana a `fromKey`, **prefiriendo el pasado**.
+ *
+ * Sirve para el caso real que dejaba la agenda «vacía»: la app abre siempre en
+ * el periodo de hoy, así que en un mes sin visitas no se veía nada y había que
+ * adivinar cuántas veces pulsar la flecha para llegar al último mes trabajado.
+ *
+ * Funciona igual con claves de día (`yyyy-mm-dd`) y de mes (`yyyy-mm`) porque
+ * ambas se ordenan alfabéticamente igual que cronológicamente.
+ */
+export function nearestActiveKey(
+  stats: ReadonlyMap<string, { visits: number }>,
+  fromKey: string,
+): string | null {
+  let past: string | null = null;
+  let future: string | null = null;
+  for (const [key, value] of stats) {
+    if (!value || value.visits === 0) continue;
+    if (key <= fromKey) {
+      if (past === null || key > past) past = key;
+    } else if (future === null || key < future) {
+      future = key;
+    }
+  }
+  return past ?? future;
 }
 
 /** Mayor importe bruto diario del conjunto de días indicado (referencia del mapa de calor). */
