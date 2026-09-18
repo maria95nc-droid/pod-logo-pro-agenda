@@ -91,6 +91,11 @@ Deno.serve(async (req) => {
       const grossAmount = Number(body.gross_amount ?? 0);
       const patientsCount = Number(body.patients_count ?? 0);
       const visitDate = String(body.date ?? new Date().toISOString().slice(0, 10));
+      // Neto real si se conoce (p. ej. tras retención de IRPF en una factura);
+      // si no se indica, se asume igual al bruto (comportamiento anterior).
+      const netAmount = body.net_amount != null ? Number(body.net_amount) : grossAmount;
+      const irpfPercentage = body.irpf_percentage != null ? Number(body.irpf_percentage) : 0;
+      const status = body.status ? String(body.status) : "Realizada";
 
       const { data: visit, error: visitErr } = await admin
         .from("visits")
@@ -98,10 +103,11 @@ Deno.serve(async (req) => {
           user_id: OWNER_USER_ID,
           center_id: centerId,
           visit_date: visitDate,
-          status: "Realizada",
+          status,
           gross_amount: grossAmount,
+          irpf_percentage: irpfPercentage,
           patients_count: patientsCount,
-          estimated_net_amount: grossAmount,
+          estimated_net_amount: netAmount,
           general_notes: body.notes ? String(body.notes) : null,
         })
         .select("id")
@@ -160,6 +166,27 @@ Deno.serve(async (req) => {
       if (centerErr) return json({ error: centerErr.message }, 500);
 
       return json({ ok: true, center_id: center.id });
+    }
+
+    if (action === "delete_visits_by_note_prefix") {
+      // Borrado acotado: solo elimina visitas del propio dueño cuya nota empiece
+      // exactamente por el prefijo indicado (así solo se pueden borrar lotes que
+      // esta misma función importó antes, nunca visitas registradas a mano).
+      const prefix = String(body.note_prefix ?? "").trim();
+      if (!prefix || prefix.length < 10) {
+        return json({ error: "note_prefix demasiado corto o ausente (mínimo 10 caracteres, por seguridad)" }, 400);
+      }
+      const { data: toDelete, error: findErr } = await admin
+        .from("visits")
+        .select("id")
+        .eq("user_id", OWNER_USER_ID)
+        .ilike("general_notes", `${prefix}%`);
+      if (findErr) return json({ error: findErr.message }, 500);
+      const ids = (toDelete ?? []).map((v) => v.id);
+      if (ids.length === 0) return json({ ok: true, deleted: 0 });
+      const { error: delErr } = await admin.from("visits").delete().in("id", ids);
+      if (delErr) return json({ error: delErr.message }, 500);
+      return json({ ok: true, deleted: ids.length });
     }
 
     return json({ error: `Acción desconocida: ${action}` }, 400);
