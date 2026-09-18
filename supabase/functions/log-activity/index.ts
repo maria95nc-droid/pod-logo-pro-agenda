@@ -176,11 +176,15 @@ Deno.serve(async (req) => {
       if (!prefix || prefix.length < 10) {
         return json({ error: "note_prefix demasiado corto o ausente (mínimo 10 caracteres, por seguridad)" }, 400);
       }
+      // Escapa los comodines de LIKE (%, _, \) para que el prefijo se compare
+      // como texto literal, nunca como patrón — si no, un prefijo con "%"
+      // podría acabar borrando visitas fuera del lote que se quería limpiar.
+      const escapedPrefix = prefix.replace(/([\\%_])/g, "\\$1");
       const { data: toDelete, error: findErr } = await admin
         .from("visits")
         .select("id")
         .eq("user_id", OWNER_USER_ID)
-        .ilike("general_notes", `${prefix}%`);
+        .ilike("general_notes", `${escapedPrefix}%`);
       if (findErr) return json({ error: findErr.message }, 500);
       const ids = (toDelete ?? []).map((v) => v.id);
       if (ids.length === 0) return json({ ok: true, deleted: 0 });
