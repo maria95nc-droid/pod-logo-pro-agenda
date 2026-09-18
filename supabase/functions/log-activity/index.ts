@@ -80,6 +80,38 @@ Deno.serve(async (req) => {
     return { id: created.id };
   }
 
+  // Evita duplicar la ficha de un paciente que ya existe (p. ej. al reimportar
+  // varias facturas de la misma persona): busca por nombre dentro del mismo
+  // centro (o sin centro) antes de crear una nueva.
+  async function findOrCreatePatient(
+    name: string,
+    centerId: string | null,
+    extra: { dni?: string; price?: number; treatment?: string } = {},
+  ): Promise<{ id: string; error?: string }> {
+    const trimmed = name.trim();
+    let query = admin.from("patients").select("id").eq("user_id", OWNER_USER_ID).ilike("full_name", trimmed);
+    query = centerId ? query.eq("center_id", centerId) : query.is("center_id", null);
+    const { data: existing, error: findErr } = await query.maybeSingle();
+    if (findErr) return { id: "", error: findErr.message };
+    if (existing) return { id: existing.id };
+
+    const { data: created, error: createErr } = await admin
+      .from("patients")
+      .insert({
+        user_id: OWNER_USER_ID,
+        center_id: centerId,
+        full_name: trimmed,
+        patient_code: extra.dni ?? null,
+        usual_treatment: extra.treatment ?? null,
+        default_price: extra.price ?? null,
+        is_active: true,
+      })
+      .select("id")
+      .single();
+    if (createErr) return { id: "", error: createErr.message };
+    return { id: created.id };
+  }
+
   try {
     if (action === "add_visit") {
       const centerName = String(body.center ?? "").trim();
@@ -114,7 +146,32 @@ Deno.serve(async (req) => {
         .single();
       if (visitErr) return json({ error: visitErr.message }, 500);
 
-      return json({ ok: true, visit_id: visit.id, center_id: centerId });
+      // Paciente concreto asociado a esta visita (p. ej. facturas individuales
+      // a domicilio o a un particular): crea/reutiliza su ficha y enlaza el
+      // cobro real de esa visita, en vez de dejarlo solo como texto suelto.
+      let patientId: string | null = null;
+      const patientInput = body.patient as Record<string, unknown> | undefined;
+      if (patientInput?.name) {
+        const { id, error: patErr } = await findOrCreatePatient(String(patientInput.name), centerId, {
+          dni: patientInput.dni ? String(patientInput.dni) : undefined,
+          price: patientInput.price != null ? Number(patientInput.price) : undefined,
+          treatment: patientInput.treatment ? String(patientInput.treatment) : undefined,
+        });
+        if (patErr) return json({ error: patErr }, 500);
+        patientId = id;
+        const { error: vpErr } = await admin.from("visit_patients").insert({
+          visit_id: visit.id,
+          patient_id: patientId,
+          patient_name: String(patientInput.name),
+          treatment_done: patientInput.treatment ? String(patientInput.treatment) : null,
+          price_charged: patientInput.price != null ? Number(patientInput.price) : grossAmount,
+          payment_status: patientInput.payment_status ? String(patientInput.payment_status) : "Pendiente",
+          attended: true,
+        });
+        if (vpErr) return json({ error: vpErr.message }, 500);
+      }
+
+      return json({ ok: true, visit_id: visit.id, center_id: centerId, patient_id: patientId });
     }
 
     if (action === "add_patient") {
