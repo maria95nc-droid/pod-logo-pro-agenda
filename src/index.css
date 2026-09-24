@@ -60,6 +60,16 @@
     --status-info: 200 85% 45%;             /* azul info */
     --status-info-bg: 200 85% 94%;
 
+    /* Aviso de acción pendiente por parte de David («toca llamar al centro»).
+       Es rojo a propósito: es lo único de la pantalla que exige que descuelgue
+       el teléfono. No se reutiliza `--destructive` (0 70% 55%) porque sobre un
+       tinte rojo claro sólo llega a 3.9:1 y el texto del aviso es pequeño;
+       `--alert` está calculado para cumplir AA sobre `--alert-bg` y sobre
+       blanco, y `--alert-fg` es el texto que va encima del rojo saturado. */
+    --alert: 0 72% 34%;
+    --alert-bg: 0 85% 96%;
+    --alert-fg: 0 0% 100%;
+
     /* Racha y celebración — acento cálido, contrapunto al verde institucional.
        `--streak` está calculado para cumplir AA (4.5:1) sobre `--streak-bg`
        y sobre blanco; `--streak-glow` es sólo decorativo (confeti, barras). */
@@ -125,6 +135,10 @@
     --border: 160 20% 18%;
     --input: 160 20% 18%;
     --ring: 158 64% 45%;
+    /* En oscuro el aviso se invierte: rojo claro sobre un rojo muy apagado. */
+    --alert: 0 90% 72%;
+    --alert-bg: 0 35% 16%;
+    --alert-fg: 0 40% 12%;
     --streak: 32 95% 62%;
     --streak-bg: 26 45% 16%;
     --streak-glow: 38 95% 58%;

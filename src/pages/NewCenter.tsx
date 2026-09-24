@@ -13,8 +13,20 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useInvalidateAll } from "@/hooks/useData";
 import { PAYMENT_METHODS } from "@/types";
+import {
+  MAX_FREQUENCY_WEEKS,
+  MIN_FREQUENCY_WEEKS,
+  VISIT_FREQUENCY_PRESETS,
+  frequencyWeeksLabel,
+  leadDaysFor,
+  normalizeFrequencyWeeks,
+} from "@/lib/visitReminders";
 
 const TYPES = ["Residencia", "Centro de día", "Domicilio", "Clínica propia", "Otro"] as const;
+
+/** Opciones no numéricas del desplegable de cadencia. */
+const NO_CADENCE = "none";
+const CUSTOM_CADENCE = "custom";
 
 export default function NewCenter() {
   const navigate = useNavigate();
@@ -35,6 +47,10 @@ export default function NewCenter() {
   const [email, setEmail] = useState("");
   const [usualSchedule, setUsualSchedule] = useState("");
   const [visitFrequency, setVisitFrequency] = useState("");
+  // Cadencia numérica (`visit_frequency_weeks`): es la que usa la app para
+  // avisar de que toca llamar. `visitFrequency` de arriba es sólo una nota.
+  const [cadenceChoice, setCadenceChoice] = useState<string>(NO_CADENCE);
+  const [customCadence, setCustomCadence] = useState("");
   const [price, setPrice] = useState<number | "">("");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [useCustomPaymentMethod, setUseCustomPaymentMethod] = useState(false);
@@ -59,6 +75,17 @@ export default function NewCenter() {
       setEmail((data as any).email ?? "");
       setUsualSchedule(data.usual_schedule ?? "");
       setVisitFrequency((data as any).visit_frequency ?? "");
+      const loadedCadence = normalizeFrequencyWeeks(data.visit_frequency_weeks);
+      if (loadedCadence === null) {
+        setCadenceChoice(NO_CADENCE);
+        setCustomCadence("");
+      } else if ((VISIT_FREQUENCY_PRESETS as readonly number[]).includes(loadedCadence)) {
+        setCadenceChoice(String(loadedCadence));
+        setCustomCadence("");
+      } else {
+        setCadenceChoice(CUSTOM_CADENCE);
+        setCustomCadence(String(loadedCadence));
+      }
       setPrice(data.default_price_per_patient ?? "");
       const loadedPaymentMethod = (data as any).payment_method ?? "";
       setPaymentMethod(loadedPaymentMethod);
@@ -71,9 +98,22 @@ export default function NewCenter() {
     })();
   }, [id, isEdit, navigate]);
 
+  // `null` = sin cadencia fija (domicilios, centros gestionados por terceros).
+  const cadenceWeeks =
+    cadenceChoice === NO_CADENCE
+      ? null
+      : normalizeFrequencyWeeks(cadenceChoice === CUSTOM_CADENCE ? customCadence : cadenceChoice);
+  const cadenceInvalid = cadenceChoice === CUSTOM_CADENCE && cadenceWeeks === null;
+  // El campo empieza vacío: no se marca en rojo hasta que hay algo escrito
+  // (al guardar sin rellenarlo salta el aviso emergente).
+  const cadenceError = cadenceInvalid && customCadence.trim() !== "";
+
   const handleSave = async () => {
     if (!user) return;
     if (!name.trim()) return toast.error("Falta el nombre del centro");
+    if (cadenceInvalid) {
+      return toast.error(`Indica cada cuántas semanas visitas el centro (${MIN_FREQUENCY_WEEKS}–${MAX_FREQUENCY_WEEKS})`);
+    }
     setBusy(true);
     const payload: any = {
       name: name.trim(),
@@ -86,6 +126,7 @@ export default function NewCenter() {
       email: email || null,
       usual_schedule: usualSchedule || null,
       visit_frequency: visitFrequency || null,
+      visit_frequency_weeks: cadenceWeeks,
       default_price_per_patient: price === "" ? null : price,
       payment_method: paymentMethod || null,
       billing_notes: billingNotes || null,
@@ -120,7 +161,12 @@ export default function NewCenter() {
   return (
     <div className="space-y-4 pb-8 animate-fade-in">
       <div className="flex items-center gap-2">
-        <Button size="icon" variant="ghost" asChild><Link to="/pacientes"><ArrowLeft className="h-4 w-4" /></Link></Button>
+        <Button size="icon" variant="ghost" asChild>
+          <Link to="/pacientes">
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Volver a pacientes y centros</span>
+          </Link>
+        </Button>
         <h1 className="flex-1 text-2xl font-bold">{isEdit ? "Editar centro" : "Nuevo centro"}</h1>
       </div>
 
@@ -173,9 +219,66 @@ export default function NewCenter() {
               <Input id="sch" value={usualSchedule} onChange={(e) => setUsualSchedule(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="freq">Frecuencia</Label>
+              <Label htmlFor="freq">Frecuencia (nota)</Label>
               <Input id="freq" value={visitFrequency} onChange={(e) => setVisitFrequency(e.target.value)} placeholder="Mensual…" />
             </div>
+          </div>
+
+          {/* Cadencia numérica: de aquí sale el aviso de «toca llamar». */}
+          <div className="space-y-1.5">
+            <Label htmlFor="cadence">Cada cuánto lo visito</Label>
+            <Select
+              value={cadenceChoice}
+              onValueChange={(v) => {
+                setCadenceChoice(v);
+                if (v !== CUSTOM_CADENCE) setCustomCadence("");
+              }}
+            >
+              <SelectTrigger id="cadence" aria-describedby="cadence-help">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_CADENCE}>Sin cadencia fija</SelectItem>
+                {VISIT_FREQUENCY_PRESETS.map((weeks) => (
+                  <SelectItem key={weeks} value={String(weeks)}>
+                    {frequencyWeeksLabel(weeks)}
+                  </SelectItem>
+                ))}
+                <SelectItem value={CUSTOM_CADENCE}>Personalizado…</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {cadenceChoice === CUSTOM_CADENCE && (
+              <div className="space-y-1.5 pt-1">
+                <Label htmlFor="cadence-weeks" className="text-xs font-normal text-muted-foreground">
+                  Número de semanas
+                </Label>
+                <Input
+                  id="cadence-weeks"
+                  type="number"
+                  inputMode="numeric"
+                  min={MIN_FREQUENCY_WEEKS}
+                  max={MAX_FREQUENCY_WEEKS}
+                  step={1}
+                  value={customCadence}
+                  onChange={(e) => setCustomCadence(e.target.value)}
+                  aria-invalid={cadenceError || undefined}
+                  aria-describedby={cadenceError ? "cadence-error" : "cadence-help"}
+                  placeholder="Ej.: 5"
+                />
+                {cadenceError && (
+                  <p id="cadence-error" role="alert" className="text-xs font-medium text-destructive">
+                    Escribe un número entero de semanas, entre {MIN_FREQUENCY_WEEKS} y {MAX_FREQUENCY_WEEKS}.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <p id="cadence-help" className="text-xs text-muted-foreground">
+              {cadenceChoice === NO_CADENCE
+                ? "Déjalo así si no lo visitas con una periodicidad fija (domicilios, centros que avisan ellos…)."
+                : `Aparecerá un aviso para llamar hasta ${leadDaysFor(cadenceWeeks ?? 4)} días antes de que toque la siguiente visita.`}
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
@@ -218,10 +321,12 @@ export default function NewCenter() {
           </div>
           <div className="flex items-center justify-between rounded-md border p-3">
             <div>
-              <Label>Activo</Label>
-              <p className="text-xs text-muted-foreground">Si lo desactivas, no aparecerá en listas activas.</p>
+              <Label htmlFor="active">Activo</Label>
+              <p id="active-help" className="text-xs text-muted-foreground">
+                Si lo desactivas, no aparecerá en listas activas.
+              </p>
             </div>
-            <Switch checked={isActive} onCheckedChange={setIsActive} />
+            <Switch id="active" aria-describedby="active-help" checked={isActive} onCheckedChange={setIsActive} />
           </div>
         </CardContent>
       </Card>

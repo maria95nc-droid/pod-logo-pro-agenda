@@ -36,6 +36,7 @@ export type Database = {
           user_id: string
           usual_schedule: string | null
           visit_frequency: string | null
+          visit_frequency_weeks: number | null
         }
         Insert: {
           address?: string | null
@@ -58,6 +59,7 @@ export type Database = {
           user_id: string
           usual_schedule?: string | null
           visit_frequency?: string | null
+          visit_frequency_weeks?: number | null
         }
         Update: {
           address?: string | null
@@ -80,6 +82,7 @@ export type Database = {
           user_id?: string
           usual_schedule?: string | null
           visit_frequency?: string | null
+          visit_frequency_weeks?: number | null
         }
         Relationships: []
       }

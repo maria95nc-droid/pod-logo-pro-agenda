@@ -14,6 +14,8 @@ import { ActivityBar } from "@/components/agenda/ActivityBar";
 import { formatDate, formatEUR, formatTime, fromIsoDate, toIsoDate } from "@/lib/format";
 import { useVisits, useCenters } from "@/hooks/useData";
 import { calculateStreak } from "@/lib/streak";
+import { buildCallReminders, groupRemindersByDueDay, remindersInMonth } from "@/lib/visitReminders";
+import { CallReminderRow } from "@/components/reminders/CallReminder";
 import { buildCenterIndex, centerInfo } from "@/lib/centers";
 import {
   MONTHS,
@@ -41,7 +43,7 @@ import {
   type PeriodStats,
 } from "@/lib/agendaStats";
 import { cn } from "@/lib/utils";
-import { Plus, Clock, Users, Trophy, Loader2, CalendarCheck, CalendarSearch, ReceiptText } from "lucide-react";
+import { Plus, Clock, Users, Trophy, Loader2, CalendarCheck, CalendarSearch, PhoneCall, ReceiptText } from "lucide-react";
 import type { VisitStatus } from "@/types";
 
 /** Resumen textual de un periodo, en una línea y sin abreviar los importes. */
@@ -75,6 +77,13 @@ export default function Agenda() {
   const centerIndex = useMemo(() => buildCenterIndex(centers), [centers]);
   const streak = useMemo(() => calculateStreak(visits), [visits]);
 
+  // «Toca llamar»: mismos avisos que en Hoy, aquí situados en su fecha.
+  const callReminders = useMemo(
+    () => buildCallReminders(centers, visits, fromIsoDate(todayIso)),
+    [centers, visits, todayIso],
+  );
+  const callRemindersByDay = useMemo(() => groupRemindersByDueDay(callReminders), [callReminders]);
+
   const cursorIso = toIsoDate(cursor);
 
   // ── Día ────────────────────────────────────────────────────────────────────
@@ -100,6 +109,10 @@ export default function Agenda() {
   const monthTotals = useMemo(() => sumDays(dayStats, monthOwnKeys), [dayStats, monthOwnKeys]);
   const monthMax = useMemo(() => maxGross(dayStats, monthOwnKeys), [dayStats, monthOwnKeys]);
   const visibleMonthKey = `${monthYear}-${String(monthIndex + 1).padStart(2, "0")}`;
+  const monthReminders = useMemo(
+    () => remindersInMonth(callReminders, monthOwnKeys, todayIso),
+    [callReminders, monthOwnKeys, todayIso],
+  );
 
   // ── Atajos a periodos con actividad ────────────────────────────────────────
   // La agenda abre siempre en el día de hoy: en un mes sin visitas la pantalla
@@ -375,6 +388,24 @@ export default function Agenda() {
             </Card>
           )}
 
+          {monthReminders.length > 0 && (
+            <Card className="border-alert/30 bg-alert-bg shadow-card">
+              <CardContent className="space-y-2 p-3">
+                <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-alert">
+                  <PhoneCall className="h-3.5 w-3.5" aria-hidden="true" />
+                  Toca llamar
+                </h2>
+                <ul className="space-y-1.5">
+                  {monthReminders.map((reminder) => (
+                    <li key={reminder.centerId}>
+                      <CallReminderRow reminder={reminder} />
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="shadow-card">
             <CardContent className="p-3">
               <MonthHeatmap
@@ -385,6 +416,7 @@ export default function Agenda() {
                 centers={centerIndex}
                 maxGross={monthMax}
                 todayIso={todayIso}
+                callRemindersByDay={callRemindersByDay}
                 onSelectDay={goToDay}
               />
             </CardContent>

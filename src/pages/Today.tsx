@@ -2,10 +2,12 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { formatEUR, formatDateLong, capitalize, toIsoDate } from "@/lib/format";
+import { formatEUR, formatDateLong, capitalize, fromIsoDate, toIsoDate } from "@/lib/format";
 import { toast } from "sonner";
 import { useVisits, useCenters, usePatients, useMaterials, useInvalidateAll } from "@/hooks/useData";
 import { calculateStreak, isCompletedVisit } from "@/lib/streak";
+import { buildCallReminders } from "@/lib/visitReminders";
+import { CallReminderCard } from "@/components/reminders/CallReminder";
 import { markVisitDone } from "@/lib/visitActions";
 import { isQuickAggregateRow } from "@/lib/quickEntry";
 import { StreakBadge } from "@/components/StreakBadge";
@@ -70,6 +72,14 @@ export default function Today() {
 
   const lowStock = materials.filter((m) => Number(m.current_stock) <= Number(m.minimum_stock));
   const pendingPayments = visits.filter((v) => v.status === "Pendiente de cobro");
+
+  // Centros con cadencia fija a los que toca llamar para concertar la próxima
+  // visita. `todayIso` como dependencia: cambia de valor al cruzar medianoche,
+  // no en cada render.
+  const callReminders = useMemo(
+    () => buildCallReminders(centers, visits, fromIsoDate(todayIso)),
+    [centers, visits, todayIso],
+  );
 
   // Se busca por id (y no se guarda la visita en el estado) para que la hoja de
   // cobro siempre trabaje con los importes recién refrescados.
@@ -216,9 +226,13 @@ export default function Today() {
         </section>
       )}
 
-      {(lowStock.length > 0 || pendingPayments.length > 0) && (
+      {(lowStock.length > 0 || pendingPayments.length > 0 || callReminders.length > 0) && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-muted-foreground">Avisos</h2>
+          {/* Primero lo que exige una llamada hoy: es lo único en rojo. */}
+          {callReminders.map((reminder) => (
+            <CallReminderCard key={reminder.centerId} reminder={reminder} />
+          ))}
           {pendingPayments.length > 0 && (
             <Link to="/finanzas">
               <Card className="border-status-pending-payment/25 bg-status-pending-payment-bg transition-smooth active:scale-[0.99]">

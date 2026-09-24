@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { formatEUR, toIsoDate } from "@/lib/format";
+import { formatEUR, fromIsoDate, toIsoDate } from "@/lib/format";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, Save, Users, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,16 +18,29 @@ import { QuickVisitSheet } from "@/components/quick/QuickVisitSheet";
 const IRPF = 7;
 const DEFAULT_TRAVEL = 8;
 
+/**
+ * Fecha `yyyy-mm-dd` **real**: el valor llega de la URL. No basta el formato
+ * (`2026-99-99` lo cumple); se comprueba que el calendario la acepte tal cual.
+ */
+const isValidIsoDate = (value: string | null): value is string =>
+  !!value && /^\d{4}-\d{2}-\d{2}$/.test(value) && toIsoDate(fromIsoDate(value)) === value;
+
 export default function NewVisit() {
   const navigate = useNavigate();
+  // El aviso de «toca llamar» enlaza aquí con el centro y la fecha ya puestos
+  // (`/visita/nueva?centro=…&fecha=…`); sin parámetros no cambia nada.
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { data: centers = [] } = useCenters();
   const { data: patients = [] } = usePatients();
   const invalidate = useInvalidateAll();
   const [busy, setBusy] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
-  const [centerId, setCenterId] = useState("");
-  const [date, setDate] = useState(toIsoDate());
+  const [centerId, setCenterId] = useState(() => searchParams.get("centro") ?? "");
+  const [date, setDate] = useState(() => {
+    const requested = searchParams.get("fecha");
+    return isValidIsoDate(requested) ? requested : toIsoDate();
+  });
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("12:00");
   const [selectedPatients, setSelectedPatients] = useState<Record<string, number>>({});
@@ -56,6 +69,11 @@ export default function NewVisit() {
   const handleSave = async () => {
     if (!user) return;
     if (!centerId) return toast.error("Selecciona un centro");
+    // El centro puede venir de la URL: si ya no existe, mejor avisar aquí que
+    // dejar que falle la clave ajena con un mensaje de base de datos.
+    if (centers.length > 0 && !centers.some((c) => c.id === centerId)) {
+      return toast.error("Ese centro ya no existe: selecciona otro");
+    }
     setBusy(true);
     const ids = Object.keys(selectedPatients);
     const { data: visit, error } = await supabase.from("visits").insert({

@@ -1,11 +1,12 @@
 import { Fragment } from "react";
-import { Ban, Hourglass } from "lucide-react";
+import { Ban, Hourglass, PhoneCall } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatEUR, formatEURCompact, formatDateLong, toIsoDate } from "@/lib/format";
 import { WEEKDAYS } from "@/lib/calendar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DayOrigins } from "@/components/agenda/DayOrigins";
 import type { CenterInfo } from "@/lib/centers";
+import type { CallReminder } from "@/lib/visitReminders";
 import {
   heatLevel,
   isFullyCancelledDay,
@@ -27,6 +28,8 @@ interface MonthHeatmapProps {
   /** Mejor día del mes visible: define el nivel 4 de la escala. */
   maxGross: number;
   todayIso: string;
+  /** Avisos de «toca llamar» indexados por la fecha en la que toca. */
+  callRemindersByDay?: ReadonlyMap<string, readonly CallReminder[]>;
   onSelectDay: (day: Date) => void;
 }
 
@@ -58,8 +61,14 @@ export function MonthHeatmap({
   centers,
   maxGross,
   todayIso,
+  callRemindersByDay,
   onSelectDay,
 }: MonthHeatmapProps) {
+  // La leyenda sólo aparece si hay alguna marca visible en esta rejilla.
+  const hasCallMarks =
+    !!callRemindersByDay?.size &&
+    days.some((day) => day.getMonth() === month && callRemindersByDay.has(toIsoDate(day)));
+
   return (
     <div>
       <div className="mb-1.5 grid grid-cols-7 gap-1 text-center" aria-hidden="true">
@@ -83,7 +92,8 @@ export function MonthHeatmap({
           const plural = count > 1 ? "s" : "";
 
           const dateLabel = formatDateLong(day);
-          const label =
+          const reminders = inMonth ? callRemindersByDay?.get(key) : undefined;
+          const baseLabel =
             count === 0
               ? `${dateLabel}: sin visitas`
               : allCancelled
@@ -91,6 +101,9 @@ export function MonthHeatmap({
                 : unbilled
                   ? `${dateLabel}: ${count} visita${plural}, importe pendiente de facturar`
                   : `${dateLabel}: ${count} visita${plural}, ${formatEUR(stats!.gross)}`;
+          const label = reminders?.length
+            ? `${baseLabel}. Toca llamar a ${reminders.map((r) => r.centerName).join(", ")}`
+            : baseLabel;
 
           const dayVisits = visitsByDay.get(key) ?? [];
 
@@ -116,6 +129,17 @@ export function MonthHeatmap({
                 isToday && "outline outline-2 outline-offset-1 outline-primary",
               )}
             >
+              {/* Marca de «toca llamar»: va en la esquina para no competir con
+                  el número del día ni con el importe. */}
+              {reminders?.length ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-alert text-alert-fg ring-1 ring-card"
+                >
+                  <PhoneCall className="h-2.5 w-2.5" />
+                </span>
+              ) : null}
+
               <span
                 aria-hidden="true"
                 className={cn("text-xs leading-none tabular-nums", isToday || inMonth ? "font-semibold" : "font-normal")}
@@ -165,6 +189,17 @@ export function MonthHeatmap({
         <p className="hidden basis-full sm:block">
           Pasa el ratón por un día para ver de dónde sale el importe; púlsalo para abrir el detalle.
         </p>
+        {hasCallMarks && (
+          <p className="inline-flex items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-alert text-alert-fg"
+            >
+              <PhoneCall className="h-2.5 w-2.5" />
+            </span>
+            Toca llamar
+          </p>
+        )}
         <p className="inline-flex items-center gap-1.5">
           <span
             aria-hidden="true"
