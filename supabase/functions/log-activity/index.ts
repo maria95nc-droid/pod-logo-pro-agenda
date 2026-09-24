@@ -296,6 +296,29 @@ Deno.serve(async (req) => {
       return json({ ok: true, center_id: center.id });
     }
 
+    if (action === "update_center_price") {
+      // Acción de alcance mínimo a propósito: solo puede tocar
+      // `default_price_per_patient` de un centro ya existente del propio
+      // usuario, por nombre exacto (sin comodines). No borra, no crea, no
+      // toca ningún otro campo.
+      const name = String(body.name ?? "").trim();
+      const price = parseAmount(body.price);
+      if (!name) return json({ error: "Falta el nombre del centro" }, 400);
+      if (price === null || price < 0) return json({ error: "price debe ser un número ≥ 0" }, 400);
+
+      const { data: updated, error: updErr } = await admin
+        .from("centers")
+        .update({ default_price_per_patient: price })
+        .eq("user_id", OWNER_USER_ID)
+        .eq("name", name)
+        .select("id")
+        .limit(1);
+      if (updErr) return json({ error: updErr.message }, 500);
+      if (!updated || updated.length === 0) return json({ error: `No existe un centro llamado exactamente "${name}"` }, 404);
+
+      return json({ ok: true, center_id: updated[0].id });
+    }
+
     if (action === "delete_visits_by_batch") {
       // Borrado acotado por COINCIDENCIA EXACTA de `import_batch`, nunca por
       // patrón sobre texto libre. La versión anterior (`delete_visits_by_
