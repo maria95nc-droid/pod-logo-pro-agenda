@@ -1,11 +1,22 @@
-// Devuelve la plantilla de residencias habituales de David para la importación inicial.
-// Vive en el backend (no en el bundle público) porque contiene datos reales de su
-// cartera de clientes (nombres de centros, precios, forma de cobro).
+// Devuelve la plantilla de residencias habituales de David para la importación
+// inicial (el botón "Importar mis residencias" de la app).
 //
-// La app permite alta libre de cuentas (email/contraseña), así que exigir solo un
-// JWT válido no basta: cualquier desconocido podría registrarse y leer estos datos.
-// Por eso, además del JWT (verificado por la plataforma), comprobamos que el email
-// del usuario autenticado es el del propietario antes de devolver la lista real.
+// IMPORTANTE (revisado 2026-09-24): este archivo vive en un repositorio de
+// GitHub PÚBLICO (necesario para publicar la web en GitHub Pages). Antes esta
+// lista tenía los nombres reales de las residencias y sus precios escritos
+// aquí mismo, en texto plano — cualquiera podía leerlos directamente en
+// GitHub, sin necesidad de llamar a esta función ni de tener ninguna clave.
+// La comprobación de email de más abajo protege la LLAMADA a la función, pero
+// no protegía el CÓDIGO FUENTE, que es público igualmente. Esos datos deben
+// darse por divulgados: quitarlos ahora no borra copias ya hechas ni cachés.
+//
+// Como las 12 residencias reales ya están importadas en la base de datos
+// (este botón solo sirve para la carga inicial en una cuenta nueva), la
+// plantilla se deja vacía en el código fuente en vez de mover el problema a
+// un secreto: no hay necesidad real de mantener estos datos en ningún sitio
+// nuevo. Si algún día hace falta una plantilla de alta rápida otra vez,
+// debe rellenarse a mano desde la app (Centros → Nuevo centro), nunca
+// volver a escribirse aquí.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -15,68 +26,7 @@ const corsHeaders = {
 
 const OWNER_EMAIL = "davidmariaajnc@gmail.com";
 
-const KNOWN_CENTERS = [
-  { name: "Argüelles", type: "Residencia", defaultPricePerPatient: 14, notes: "Cartera habitual desde junio." },
-  { name: "Trubia", type: "Residencia", defaultPricePerPatient: 14, notes: "Cartera habitual desde julio." },
-  { name: "Oviedo", type: "Residencia", defaultPricePerPatient: 14, notes: "Cartera habitual desde julio/agosto." },
-  { name: "Amar", type: "Residencia", defaultPricePerPatient: 18, notes: "Cartera habitual desde junio." },
-  {
-    name: "Residencia Ave María",
-    type: "Residencia",
-    defaultPricePerPatient: 15,
-    notes: "Hasta 130 pacientes (unos 40 al mes). Cartera habitual desde junio.",
-  },
-  {
-    name: "Santo Ángel",
-    type: "Residencia",
-    defaultPricePerPatient: 25,
-    paymentMethod: "Facturación directa a familias",
-    billingNotes: "Se factura directamente a los padres/familias del residente, no al centro.",
-  },
-  {
-    name: "Centro de Día Avilés",
-    type: "Centro de día",
-    defaultPricePerPatient: 15,
-    visitFrequency: "Mañana y tarde",
-    billingNotes:
-      "Son 3 centros distintos; se factura con fecha del mes siguiente a la visita (visita en mayo se factura en junio).",
-  },
-  {
-    name: "Residencia La Fresneda",
-    type: "Residencia",
-    defaultPricePerPatient: 15,
-    notes: "Cartera habitual desde junio (alta como autónomo).",
-  },
-  {
-    name: "Pravia",
-    type: "Residencia",
-    paymentMethod: "A través de empresa gestora (Eulen)",
-    visitFrequency: "3 veces al mes",
-    materialNotes: "El material lo pone el centro.",
-  },
-  {
-    name: "Santa Bárbara",
-    type: "Residencia",
-    paymentMethod: "A través de empresa gestora (Eulen)",
-    visitFrequency: "2 veces al mes",
-    materialNotes: "El material lo pone el centro.",
-  },
-  {
-    name: "Grao",
-    type: "Residencia",
-    paymentMethod: "A través de empresa gestora (Eulen)",
-    visitFrequency: "2 veces al mes",
-    materialNotes: "El material lo pone el centro.",
-  },
-  {
-    name: "Lugones",
-    type: "Residencia",
-    paymentMethod: "A través de empresa gestora (Eulen)",
-    visitFrequency: "2 veces al mes",
-    materialNotes: "El material lo pone el centro.",
-    notes: "Cartera habitual desde diciembre.",
-  },
-];
+const KNOWN_CENTERS: unknown[] = [];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {

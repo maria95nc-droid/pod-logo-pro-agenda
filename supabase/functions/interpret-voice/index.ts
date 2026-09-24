@@ -1,7 +1,22 @@
 // Interpreta texto dictado en español y extrae datos estructurados
 // según la intención (centro, paciente, visita, material, tratamiento, cobro)
-import { corsHeaders } from "@supabase/supabase-js/cors";
+//
+// NOTA (auditoría 2026-09-24): esta función usaba una API de IA de pago sin
+// comprobar que quien llama es el propietario de la app. Como el alta de
+// cuentas es libre, cualquier desconocido que se registrara podía gastar el
+// crédito de IA a través de esta función. Se añade la misma comprobación de
+// email que ya usa `known-centers`. Esta función depende además de
+// LOVABLE_API_KEY, un secreto de la infraestructura de Lovable que no existe
+// en el proyecto de Supabase actual (se migró fuera de Lovable): hoy no
+// funciona hasta que se sustituya por otro proveedor de IA.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const OWNER_EMAIL = "davidmariaajnc@gmail.com";
 const LOVABLE_AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
 const SYSTEM_PROMPT = `Eres un asistente que interpreta dictados en español de un podólogo
@@ -109,6 +124,21 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const authClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: userData } = await authClient.auth.getUser();
+    const email = userData?.user?.email?.toLowerCase().trim();
+    if (email !== OWNER_EMAIL) {
+      return new Response(JSON.stringify({ error: "No autorizado" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { transcript, hintIntent } = await req.json();
     if (!transcript || typeof transcript !== "string") {
       return new Response(JSON.stringify({ error: "transcript requerido" }), {
