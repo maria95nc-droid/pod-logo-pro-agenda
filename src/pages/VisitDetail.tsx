@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CollectPaymentSheet } from "@/components/payments/CollectPaymentSheet";
+import { VisitFiscalCard } from "@/components/fiscal/VisitFiscalCard";
+import { collectInvoiceNumbers, normalizeIncomeType, type FiscalVisit } from "@/lib/fiscalCalculations";
 import { formatEUR } from "@/lib/format";
-import { useVisit, useCenters, usePatients, useInvalidateAll } from "@/hooks/useData";
+import { useVisit, useCenters, usePatients, useVisits, useInvalidateAll } from "@/hooks/useData";
 import { describeLines, parsePaymentBreakdown } from "@/lib/payments";
 import { isQuickAggregateRow } from "@/lib/quickEntry";
 import { markVisitDone } from "@/lib/visitActions";
@@ -18,8 +20,16 @@ export default function VisitDetail() {
   const { data: visit, isLoading } = useVisit(id);
   const { data: centers = [] } = useCenters();
   const { data: patients = [] } = usePatients();
+  const { data: visits = [] } = useVisits();
   const invalidate = useInvalidateAll();
   const [collecting, setCollecting] = useState(false);
+
+  // Números de factura de **otras** visitas: con el de esta dentro, cambiar su
+  // número por el siguiente de la serie ocultaría el hueco que deja atrás.
+  const otherInvoiceNumbers = useMemo(
+    () => collectInvoiceNumbers((visits as unknown as FiscalVisit[]).filter((row) => row.id !== id)),
+    [visits, id],
+  );
 
   if (isLoading) return <p className="p-6 text-center text-sm text-muted-foreground">Cargando…</p>;
   if (!visit) return <p className="p-6 text-center">Visita no encontrada.</p>;
@@ -39,7 +49,10 @@ export default function VisitDetail() {
   return (
     <div className="space-y-4 pb-8">
       <div className="flex items-center gap-2">
-        <Button size="icon" variant="ghost" onClick={() => navigate(-1)}><ArrowLeft className="h-4 w-4" /></Button>
+        <Button size="icon" variant="ghost" onClick={() => navigate(-1)}>
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          <span className="sr-only">Volver</span>
+        </Button>
         <h1 className="text-xl font-bold flex-1 truncate">{center?.name ?? "Sin centro"}</h1>
         <StatusBadge status={visit.status as any} />
       </div>
@@ -59,6 +72,13 @@ export default function VisitDetail() {
           <div><p className="text-[11px] opacity-80">Pacientes</p><p className="text-lg font-bold">{visit.patients_count}</p></div>
         </CardContent>
       </Card>
+
+      <VisitFiscalCard
+        visit={visit}
+        existingInvoiceNumbers={otherInvoiceNumbers}
+        suggestion={normalizeIncomeType(center?.default_income_type)}
+        onSaved={invalidate}
+      />
 
       {visit.visit_patients && visit.visit_patients.length > 0 && (
         <section>

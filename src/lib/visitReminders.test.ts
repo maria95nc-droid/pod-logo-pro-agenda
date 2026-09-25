@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   CALL_LEAD_DAYS,
+  MAX_FREQUENCY_WEEKS,
+  VISIT_FREQUENCY_PRESETS,
   buildCallReminders,
   daysBetweenIso,
-  frequencyWeeksLabel,
+  frequencyLabel,
   groupRemindersByDueDay,
   leadDaysFor,
   normalizeFrequencyWeeks,
@@ -62,17 +64,38 @@ describe("normalizeFrequencyWeeks", () => {
   });
 });
 
-describe("frequencyWeeksLabel", () => {
-  it("traduce las cadencias habituales a lenguaje de David", () => {
-    expect(frequencyWeeksLabel(2)).toBe("Cada 2 semanas (quincenal)");
-    expect(frequencyWeeksLabel(4)).toBe("Cada 4 semanas (mensual)");
-    expect(frequencyWeeksLabel(6)).toBe("Cada 6 semanas (mes y medio)");
-    expect(frequencyWeeksLabel(8)).toBe("Cada 8 semanas (cada 2 meses)");
+describe("frequencyLabel", () => {
+  it("traduce las cadencias habituales a meses, como las dice David", () => {
+    expect(frequencyLabel(4)).toBe("Cada mes");
+    expect(frequencyLabel(6)).toBe("Cada mes y medio");
+    expect(frequencyLabel(8)).toBe("Cada 2 meses");
+    expect(frequencyLabel(12)).toBe("Cada 3 meses");
   });
 
-  it("para cadencias libres se queda en las semanas, en singular y plural", () => {
-    expect(frequencyWeeksLabel(1)).toBe("Cada 1 semana");
-    expect(frequencyWeeksLabel(5)).toBe("Cada 5 semanas");
+  it("por debajo del mes se queda en semanas, en singular y plural", () => {
+    expect(frequencyLabel(1)).toBe("Cada semana");
+    expect(frequencyLabel(2)).toBe("Cada 2 semanas");
+    expect(frequencyLabel(3)).toBe("Cada 3 semanas");
+  });
+
+  it("usa medios meses cuando la equivalencia es exacta, sin decimales", () => {
+    expect(frequencyLabel(10)).toBe("Cada 2 meses y medio");
+    expect(frequencyLabel(14)).toBe("Cada 3 meses y medio");
+    expect(frequencyLabel(16)).toBe("Cada 4 meses");
+    expect(frequencyLabel(MAX_FREQUENCY_WEEKS)).toBe("Cada 13 meses");
+  });
+
+  it("no redondea una cadencia impar: se queda en semanas exactas", () => {
+    // 5 y 6 semanas no pueden leerse igual: el aviso se calcula con ese número.
+    expect(frequencyLabel(5)).toBe("Cada 5 semanas");
+    expect(frequencyLabel(7)).toBe("Cada 7 semanas");
+    expect(frequencyLabel(9)).toBe("Cada 9 semanas");
+  });
+
+  it("cubre todas las opciones del desplegable sin dejar texto raro", () => {
+    for (const weeks of VISIT_FREQUENCY_PRESETS) {
+      expect(frequencyLabel(weeks)).toMatch(/^Cada (\d+ (semanas|meses)( y medio)?|semana|mes( y medio)?)$/);
+    }
   });
 });
 

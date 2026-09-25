@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,8 +14,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCenters, usePatients, useInvalidateAll } from "@/hooks/useData";
 import { QuickVisitSheet } from "@/components/quick/QuickVisitSheet";
+import { IncomeTypeChoice } from "@/components/fiscal/IncomeTypeChoice";
+import { DEFAULT_EMPRESA_IRPF, normalizeIncomeType, type IncomeType } from "@/lib/fiscalCalculations";
 
-const IRPF = 7;
 const DEFAULT_TRAVEL = 8;
 
 /**
@@ -26,6 +27,7 @@ const isValidIsoDate = (value: string | null): value is string =>
   !!value && /^\d{4}-\d{2}-\d{2}$/.test(value) && toIsoDate(fromIsoDate(value)) === value;
 
 export default function NewVisit() {
+  const fieldId = useId();
   const navigate = useNavigate();
   // El aviso de «toca llamar» enlaza aquí con el centro y la fecha ya puestos
   // (`/visita/nueva?centro=…&fecha=…`); sin parámetros no cambia nada.
@@ -47,15 +49,30 @@ export default function NewVisit() {
   const [travel, setTravel] = useState(DEFAULT_TRAVEL);
   const [materialCost, setMaterialCost] = useState(0);
   const [notes, setNotes] = useState("");
+  // Quién paga: se pregunta siempre y no se asume. La retención sale de aquí.
+  const [incomeType, setIncomeType] = useState<IncomeType | null>(null);
+  const [payerMissing, setPayerMissing] = useState(false);
 
   const centerPatients = patients.filter((p) => p.center_id === centerId);
+  const selectedCenter = centerId ? centers.find((c) => c.id === centerId) : undefined;
+  const centerSuggestion = normalizeIncomeType(selectedCenter?.default_income_type);
+
+  // Cuando el centro llega en la URL (desde el aviso de «toca llamar») los
+  // centros aún no están cargados: se precarga en cuanto lleguen, sin pisar una
+  // respuesta que ya se haya dado a mano.
+  useEffect(() => {
+    if (!centerSuggestion) return;
+    setIncomeType((current) => current ?? centerSuggestion);
+  }, [centerSuggestion]);
+
+  const irpfPercentage = incomeType === "Empresa" ? DEFAULT_EMPRESA_IRPF : 0;
 
   const { gross, irpf, net } = useMemo(() => {
     const gross = Object.values(selectedPatients).reduce((a, b) => a + (b || 0), 0);
-    const irpf = (gross * IRPF) / 100;
+    const irpf = (gross * irpfPercentage) / 100;
     const net = gross - irpf - travel - materialCost;
     return { gross, irpf, net };
-  }, [selectedPatients, travel, materialCost]);
+  }, [selectedPatients, travel, materialCost, irpfPercentage]);
 
   const togglePatient = (id: string, price: number) => {
     setSelectedPatients((s) => {
@@ -74,6 +91,11 @@ export default function NewVisit() {
     if (centers.length > 0 && !centers.some((c) => c.id === centerId)) {
       return toast.error("Ese centro ya no existe: selecciona otro");
     }
+    // Nunca se asume quién paga: de ahí salen la retención y el Modelo 130.
+    if (incomeType === null) {
+      setPayerMissing(true);
+      return toast.error("Dinos quién paga esta visita");
+    }
     setBusy(true);
     const ids = Object.keys(selectedPatients);
     const { data: visit, error } = await supabase.from("visits").insert({
@@ -84,7 +106,8 @@ export default function NewVisit() {
       end_time: end,
       status: "Programada",
       gross_amount: gross,
-      irpf_percentage: IRPF,
+      income_type: incomeType,
+      irpf_percentage: irpfPercentage,
       travel_cost: travel,
       material_cost: materialCost,
       estimated_net_amount: net,
@@ -149,7 +172,15 @@ export default function NewVisit() {
         <CardContent className="space-y-4 p-4">
           <div className="space-y-1.5">
             <Label>Centro</Label>
-            <Select value={centerId} onValueChange={setCenterId}>
+            <Select
+              value={centerId}
+              onValueChange={(value) => {
+                setCenterId(value);
+                // Al cambiar de centro se recarga su «quién paga» habitual.
+                setIncomeType(normalizeIncomeType(centers.find((c) => c.id === value)?.default_income_type));
+                setPayerMissing(false);
+              }}
+            >
               <SelectTrigger><SelectValue placeholder="Selecciona centro o domicilio" /></SelectTrigger>
               <SelectContent>
                 {centers.map((c) => (
@@ -172,6 +203,17 @@ export default function NewVisit() {
               <Input id="e" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
             </div>
           </div>
+
+          <IncomeTypeChoice
+            idPrefix={fieldId}
+            value={incomeType}
+            onChange={(next) => {
+              setIncomeType(next);
+              setPayerMissing(false);
+            }}
+            suggestion={centerSuggestion}
+            invalid={payerMissing && incomeType === null}
+          />
         </CardContent>
       </Card>
 
@@ -234,7 +276,18 @@ export default function NewVisit() {
       <Card className="bg-primary-soft border-primary/20">
         <CardContent className="p-4 space-y-1.5 text-sm">
           <div className="flex justify-between"><span>Bruto</span><span className="font-semibold">{formatEUR(gross)}</span></div>
-          <div className="flex justify-between text-muted-foreground"><span>IRPF ({IRPF}%)</span><span>−{formatEUR(irpf)}</span></div>
+          <div className="flex justify-between text-muted-foreground">
+            {/* Sin respuesta todavía no se puede decir «0 %»: parecería que no
+                hay retención cuando lo que pasa es que falta el dato. */}
+            <span>
+              {incomeType === null
+                ? "IRPF (falta decir quién paga)"
+                : incomeType === "Particular"
+                  ? "IRPF (no te retienen)"
+                  : `IRPF (${irpfPercentage} %)`}
+            </span>
+            <span>−{formatEUR(irpf)}</span>
+          </div>
           <div className="flex justify-between text-muted-foreground"><span>Desplazamiento + material</span><span>−{formatEUR(travel + materialCost)}</span></div>
           <div className="flex justify-between border-t border-primary/20 pt-2 text-base font-bold text-primary"><span>Neto estimado</span><span>{formatEUR(net)}</span></div>
         </CardContent>

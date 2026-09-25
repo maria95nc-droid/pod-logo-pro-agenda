@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import {
   ALL_FILTER,
   HOME_FILTER,
+  UNCLASSIFIED_PAYER_FILTER,
   buildLedgerEntries,
   centerOptions,
   describePaymentSource,
@@ -25,10 +26,12 @@ import {
   monthOptions,
   type LedgerEntry,
   type LedgerFilters,
+  type LedgerPayerFilter,
   type LedgerStateFilter,
   type LedgerVisit,
   type LedgerTotals,
 } from "@/lib/incomeLedger";
+import { INCOME_TYPE_LABEL } from "@/lib/fiscalCalculations";
 import type { VisitStatus } from "@/types";
 
 /**
@@ -49,6 +52,16 @@ const STATE_OPTIONS: { value: LedgerStateFilter; label: string }[] = [
 ];
 
 const STATE_VALUES = new Set(STATE_OPTIONS.map((option) => option.value));
+
+/** Quién paga: mismo vocabulario que la pregunta de la visita. */
+const PAYER_OPTIONS: { value: LedgerPayerFilter; label: string }[] = [
+  { value: "all", label: "Pague quien pague" },
+  { value: "Empresa", label: INCOME_TYPE_LABEL.Empresa },
+  { value: "Particular", label: INCOME_TYPE_LABEL.Particular },
+  { value: UNCLASSIFIED_PAYER_FILTER, label: "Sin clasificar" },
+];
+
+const PAYER_VALUES = new Set(PAYER_OPTIONS.map((option) => option.value));
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export default function Income() {
@@ -64,6 +77,7 @@ export default function Income() {
 
   const requestedMonth = params.get("mes") ?? "";
   const requestedState = params.get("estado") ?? "";
+  const requestedPayer = params.get("paga") ?? "";
 
   const requestedCenter = params.get("centro") ?? "";
 
@@ -76,8 +90,11 @@ export default function Income() {
       state: STATE_VALUES.has(requestedState as LedgerStateFilter)
         ? (requestedState as LedgerStateFilter)
         : ALL_FILTER,
+      payer: PAYER_VALUES.has(requestedPayer as LedgerPayerFilter)
+        ? (requestedPayer as LedgerPayerFilter)
+        : ALL_FILTER,
     }),
-    [requestedMonth, requestedCenter, requestedState],
+    [requestedMonth, requestedCenter, requestedState, requestedPayer],
   );
 
   // El mes enlazado se ofrece aunque esté vacío: así el usuario ve
@@ -96,7 +113,10 @@ export default function Income() {
   const totals = useMemo(() => ledgerTotals(visible), [visible]);
   const groups = useMemo(() => groupByMonth(visible), [visible]);
   const hasFilters =
-    filters.month !== ALL_FILTER || filters.centerId !== ALL_FILTER || filters.state !== ALL_FILTER;
+    filters.month !== ALL_FILTER ||
+    filters.centerId !== ALL_FILTER ||
+    filters.state !== ALL_FILTER ||
+    filters.payer !== ALL_FILTER;
   const activeStateLabel =
     filters.state === ALL_FILTER
       ? null
@@ -137,7 +157,7 @@ export default function Income() {
                   <Filter className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
                   Filtros
                 </legend>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="filtro-mes">Mes</Label>
                     <Select value={filters.month} onValueChange={(value) => setFilter("mes", value)}>
@@ -165,6 +185,25 @@ export default function Income() {
                         <SelectItem value={ALL_FILTER}>Todos los orígenes</SelectItem>
                         <SelectItem value={HOME_FILTER}>Solo domicilios</SelectItem>
                         {centerChoices.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="filtro-paga">Quién paga</Label>
+                    <Select
+                      value={filters.payer}
+                      onValueChange={(value) => setFilter("paga", value as LedgerPayerFilter)}
+                    >
+                      <SelectTrigger id="filtro-paga" className="h-11">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAYER_OPTIONS.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
@@ -376,6 +415,15 @@ function EntryRow({ entry }: { entry: LedgerEntry }) {
           )}
           {entry.pending > 0 && entry.settled > 0 && (
             <span className="text-status-pending-payment">Falta {formatEUR(entry.pending)}</span>
+          )}
+          {/* Quién paga: es lo que decide la retención y el Modelo 130. */}
+          {entry.incomeType ? (
+            <span>
+              Paga: {INCOME_TYPE_LABEL[entry.incomeType].toLowerCase()}
+              {entry.invoiceNumber ? ` · ${entry.invoiceNumber}` : ""}
+            </span>
+          ) : (
+            !entry.cancelled && <span className="font-semibold text-streak">Falta decir quién paga</span>
           )}
         </span>
 

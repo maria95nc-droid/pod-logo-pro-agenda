@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -27,7 +27,27 @@ import {
 import { toast } from "sonner";
 import {
   Download, TrendingUp, FileText, AlertCircle, Clock, Wallet, RefreshCw, ReceiptText, ChevronRight,
+  Banknote, House,
 } from "lucide-react";
+import { FiscalTotalsCard } from "@/components/fiscal/FiscalTotalsCard";
+import { Modelo130Gauge } from "@/components/fiscal/Modelo130Gauge";
+import { EmpresaInvoices } from "@/components/fiscal/EmpresaInvoices";
+import { UnclassifiedVisits, type ClassifiableVisit } from "@/components/fiscal/UnclassifiedVisits";
+import {
+  cashInHand,
+  currentQuarter,
+  empresaInvoiceState,
+  firstDeclaredVisitIso,
+  fiscalTotals,
+  homeVisitsSummary,
+  modelo130Snapshot,
+  monthRange,
+  normalizeIncomeType,
+  quarterOfMonth,
+  quarterSnapshot,
+  visitsInRange,
+  type QuarterRef,
+} from "@/lib/fiscalCalculations";
 
 const FEE_METHOD_LABEL: Record<string, string> = {
   por_dia: "entre días trabajados",
@@ -35,8 +55,13 @@ const FEE_METHOD_LABEL: Record<string, string> = {
   por_ingreso: "proporcional a ingresos",
 };
 
+/** Pestañas de Finanzas. Viven en la URL para poder enlazar «ver el cálculo». */
+const VIEWS = ["resumen", "pendientes", "impuestos", "gestoria"] as const;
+type FinanceView = (typeof VIEWS)[number];
+const DEFAULT_VIEW: FinanceView = "resumen";
+
 export default function Finance() {
-  const { data: visits = [] } = useVisits();
+  const { data: visits = [], isError: visitsFailed } = useVisits();
   const { data: centers = [] } = useCenters();
   const { data: expenses = [] } = useExpenses();
   const { data: settings = defaultUserSettings } = useUserSettings();
@@ -47,6 +72,21 @@ export default function Finance() {
   // visitas mostraba todo a cero y los meses ya trabajados eran invisibles.
   const currentMonth = monthKey(toIsoDate());
   const [chosenMonth, setChosenMonth] = useState<string | null>(null);
+
+  // Pestaña visible: en la URL para que el aviso del Modelo 130 pueda enlazar
+  // directamente al cálculo (`/finanzas?vista=impuestos`).
+  const [params, setParams] = useSearchParams();
+  const requestedView = params.get("vista") ?? "";
+  const view: FinanceView = (VIEWS as readonly string[]).includes(requestedView)
+    ? (requestedView as FinanceView)
+    : DEFAULT_VIEW;
+  const setView = (next: string) => {
+    const search = new URLSearchParams(params);
+    if (next === DEFAULT_VIEW) search.delete("vista");
+    else search.set("vista", next);
+    setParams(search, { replace: true });
+  };
+
   const centerIndex = useMemo(() => buildCenterIndex(centers), [centers]);
 
   const availableMonths = useMemo(() => {
@@ -127,6 +167,42 @@ export default function Finance() {
     };
   }, [visits, expenses, settings, selectedMonth]);
 
+  // ── Impuestos ──────────────────────────────────────────────────────────────
+  // Todo el cálculo vive en `src/lib/fiscalCalculations.ts` (funciones puras con
+  // tests): aquí sólo se elige el periodo y se pinta.
+  const fiscal = useMemo(() => {
+    const rows = visits as unknown as ClassifiableVisit[];
+    const range = monthRange(selectedMonth);
+    // El trimestre se toma del mes que se está mirando, no de hoy: así las dos
+    // cifras de la pestaña hablan del mismo periodo. La etiqueta dice siempre
+    // qué trimestre es.
+    const quarterRef: QuarterRef = {
+      year: Number(selectedMonth.slice(0, 4)),
+      quarter: quarterOfMonth(Number(selectedMonth.slice(5, 7))),
+    };
+    const unclassified = visitsInRange(rows, range)
+      .filter((visit) => normalizeIncomeType(visit.income_type) === null)
+      .sort((a, b) => b.visit_date.localeCompare(a.visit_date));
+
+    return {
+      range,
+      quarterRef,
+      totals: fiscalTotals(rows, range),
+      month: modelo130Snapshot(rows, range),
+      quarter: quarterSnapshot(rows, quarterRef),
+      invoices: empresaInvoiceState(rows),
+      homes: homeVisitsSummary(rows, centerIndex, range),
+      cash: cashInHand(rows, centerIndex, range),
+      firstVisitIso: firstDeclaredVisitIso(rows),
+      unclassified,
+    };
+  }, [visits, selectedMonth, centerIndex]);
+
+  const isCurrentQuarter = useMemo(() => {
+    const now = currentQuarter();
+    return now.year === fiscal.quarterRef.year && now.quarter === fiscal.quarterRef.quarter;
+  }, [fiscal.quarterRef]);
+
   // El cobro se confirma en la hoja de desglose (permite partirlo entre varias
   // formas de pago); aquí sólo se guarda qué visita se está cobrando.
   const [payingVisitId, setPayingVisitId] = useState<string | null>(null);
@@ -206,17 +282,19 @@ export default function Finance() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="resumen">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="resumen">Resumen</TabsTrigger>
-          <TabsTrigger value="pendientes">Pendientes</TabsTrigger>
-          <TabsTrigger value="gestoria">Gestoría</TabsTrigger>
+      <Tabs value={view} onValueChange={setView}>
+        {/* Cuatro pestañas no caben en una fila a 320 px: en móvil van en dos. */}
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
+          <TabsTrigger value="resumen" className="h-9">Resumen</TabsTrigger>
+          <TabsTrigger value="pendientes" className="h-9">Pendientes</TabsTrigger>
+          <TabsTrigger value="impuestos" className="h-9">Impuestos</TabsTrigger>
+          <TabsTrigger value="gestoria" className="h-9">Gestoría</TabsTrigger>
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-2">
           <Card>
             <CardContent className="space-y-2 p-4 text-sm">
-              <Row label={`IRPF (${calc.irpfPct}%)`} value={`- ${formatEUR(calc.irpf)}`} />
+              <Row label={`IRPF estimado (${calc.irpfPct}%)`} value={`- ${formatEUR(calc.irpf)}`} />
               <Row label="Desplazamientos" value={`- ${formatEUR(calc.travelCost)}`} />
               <Row label="Material" value={`- ${formatEUR(calc.materialCost)}`} />
               <Row label="Otros gastos" value={`- ${formatEUR(calc.otherExpenses)}`} />
@@ -271,7 +349,11 @@ export default function Finance() {
           <Card className="border-status-warning/30 bg-status-warning-bg/50">
             <CardContent className="flex gap-2 p-3.5 text-xs">
               <AlertCircle className="h-4 w-4 shrink-0 text-status-warning" />
-              <p className="text-foreground">Los importes netos son <strong>estimaciones internas</strong> y no sustituyen la revisión de una gestoría.</p>
+              <p className="text-foreground">
+                Los importes netos son <strong>estimaciones internas</strong> y no sustituyen la revisión de una
+                gestoría. Aquí el IRPF se aplica por igual a todo el bruto; el IRPF real, factura a factura, está en la
+                pestaña <strong>Impuestos</strong>.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -321,6 +403,87 @@ export default function Finance() {
           })}
         </TabsContent>
 
+        <TabsContent value="impuestos" className="space-y-2">
+          <p className="px-1 text-xs text-muted-foreground">
+            Sólo dinero declarado. Las cifras son una ayuda para hablar con tu gestoría, no una declaración.
+          </p>
+
+          {/* Un fallo al cargar dejaría todas las cifras a cero, y un cero aquí
+              se lee como un dato bueno. Mejor decir que no se han podido leer. */}
+          {visitsFailed && (
+            <Card className="border-alert/30 bg-alert-bg shadow-card">
+              <CardContent className="flex gap-2 p-3.5 text-xs">
+                <AlertCircle className="h-4 w-4 shrink-0 text-alert" aria-hidden="true" />
+                <p className="text-foreground">
+                  <strong className="font-semibold">No se han podido cargar las visitas.</strong> Las cifras de abajo no
+                  son de fiar: comprueba la conexión y pulsa «Recalcular».
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          <UnclassifiedVisits
+            visits={fiscal.unclassified}
+            centers={centerIndex}
+            onSaved={invalidate}
+            allTo={`/finanzas/movimientos?mes=${selectedMonth}&paga=none`}
+          />
+
+          <FiscalTotalsCard totals={fiscal.totals} periodLabel={monthLabel(selectedMonth)} />
+
+          <Modelo130Gauge
+            quarter={fiscal.quarter}
+            quarterRef={fiscal.quarterRef}
+            month={fiscal.month}
+            monthLabel={monthLabel(selectedMonth)}
+            sinceIso={fiscal.firstVisitIso}
+            detailTo={`/finanzas/movimientos?mes=${selectedMonth}`}
+          />
+          {!isCurrentQuarter && (
+            <p className="px-1 text-[11px] text-muted-foreground">
+              Estás mirando un trimestre que no es el de hoy. Cambia el mes de arriba para ver el trimestre en curso.
+            </p>
+          )}
+
+          <EmpresaInvoices
+            state={fiscal.invoices}
+            centers={centerIndex}
+            pendingTo="/finanzas/movimientos?paga=Empresa&estado=pending"
+            settledTo="/finanzas/movimientos?paga=Empresa&estado=settled"
+          />
+
+          <MetricRow
+            icon={<House className="h-4 w-4" />}
+            /* La cifra grande es el neto, con el mismo criterio del cálculo 1. */
+            label={`Domicilios en ${monthLabel(selectedMonth).toLowerCase()} (neto)`}
+            hint={
+              fiscal.homes.visits === 0
+                ? "Ninguna visita a domicilio este mes"
+                : `${fiscal.homes.visits} visita${fiscal.homes.visits === 1 ? "" : "s"} · ${fiscal.homes.patients} pac. · bruto ${formatEUR(fiscal.homes.gross)}${
+                    fiscal.homes.unclassifiedVisits > 0
+                      ? ` · ${fiscal.homes.unclassifiedVisits} sin clasificar`
+                      : ""
+                  }`
+            }
+            value={formatEUR(fiscal.homes.netDeclared)}
+            to={`/finanzas/movimientos?mes=${selectedMonth}&centro=home`}
+          />
+
+          {/* Caja física: a propósito no se relaciona con ningún cálculo fiscal. */}
+          <MetricRow
+            icon={<Banknote className="h-4 w-4" />}
+            label={`Cobrado en efectivo en ${monthLabel(selectedMonth).toLowerCase()}`}
+            hint={
+              fiscal.cash.visits === 0
+                ? "Ningún cobro en efectivo registrado este mes"
+                : `${fiscal.cash.visits} visita${fiscal.cash.visits === 1 ? "" : "s"}${
+                    fiscal.cash.hasRefunds ? " · incluye devoluciones" : ""
+                  } · sólo control de caja, no entra en los impuestos`
+            }
+            value={formatEUR(fiscal.cash.total)}
+          />
+        </TabsContent>
+
         <TabsContent value="gestoria" className="space-y-2">
           <Card>
             <CardContent className="p-4 space-y-3">
@@ -328,12 +491,29 @@ export default function Finance() {
                 <p className="text-xs font-medium text-muted-foreground">Periodo</p>
                 <p className="text-sm font-semibold">{monthLabel(selectedMonth)}</p>
               </div>
+              {/* Las cifras que se le pasan a la gestoría salen del cálculo
+                  fiscal real, factura a factura: aplicar un IRPF global a todo
+                  el bruto afirmaba que a un particular se le había retenido. */}
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><p className="text-xs text-muted-foreground">Ingresos brutos</p><p className="font-bold">{formatEUR(calc.gross)}</p></div>
-                <div><p className="text-xs text-muted-foreground">IRPF retenido ({calc.irpfPct}%)</p><p className="font-bold">{formatEUR(calc.irpf)}</p></div>
+                <div><p className="text-xs text-muted-foreground">Ingresos brutos (todos)</p><p className="font-bold">{formatEUR(calc.gross)}</p></div>
+                <div><p className="text-xs text-muted-foreground">Bruto declarado y clasificado</p><p className="font-bold">{formatEUR(fiscal.totals.grossDeclared)}</p></div>
+                <div><p className="text-xs text-muted-foreground">IRPF realmente retenido</p><p className="font-bold">{formatEUR(fiscal.totals.retainedIrpf)}</p></div>
+                <div><p className="text-xs text-muted-foreground">Neto declarado</p><p className="font-bold">{formatEUR(fiscal.totals.netDeclared)}</p></div>
+                <div><p className="text-xs text-muted-foreground">Facturado a entidades</p><p className="font-bold">{formatEUR(fiscal.totals.grossEmpresa)}</p></div>
+                <div><p className="text-xs text-muted-foreground">Cobrado a pacientes</p><p className="font-bold">{formatEUR(fiscal.totals.grossParticular)}</p></div>
                 <div><p className="text-xs text-muted-foreground">Visitas</p><p className="font-bold">{calc.monthVisits.length}</p></div>
                 <div><p className="text-xs text-muted-foreground">Centros</p><p className="font-bold">{new Set(calc.monthVisits.map(v=>v.center_id)).size}</p></div>
               </div>
+              {fiscal.totals.unclassifiedVisits > 0 && (
+                <p className="rounded-lg bg-streak-bg p-2.5 text-[11px] text-foreground">
+                  <strong className="font-semibold">
+                    {fiscal.totals.unclassifiedVisits} visita{fiscal.totals.unclassifiedVisits === 1 ? "" : "s"} sin
+                    clasificar
+                  </strong>{" "}
+                  ({formatEUR(fiscal.totals.unclassifiedGross)}) quedan fuera del bruto declarado: di quién paga en la
+                  pestaña Impuestos antes de pasarle estas cifras a tu gestoría.
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

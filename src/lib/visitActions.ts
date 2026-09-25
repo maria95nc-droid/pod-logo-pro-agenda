@@ -1,8 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
+import { DEFAULT_EMPRESA_IRPF, type IncomeType } from "@/lib/fiscalCalculations";
 import {
   attendedPatientsCount,
   distributeLines,
   normalizeLines,
+  roundCents,
   statusAfterDone,
   toAmount,
   visitTotal,
@@ -25,6 +28,14 @@ export interface ActionResult {
   error?: string;
 }
 
+/**
+ * `visit_patients.payment_breakdown` es `jsonb`. `PaymentLine` es una interfaz y
+ * TypeScript no le deduce firma de índice, así que hay que reconstruir las
+ * líneas como objetos planos para que encajen en el tipo `Json` generado.
+ */
+const toJsonLines = (lines: readonly PaymentLine[]): Json =>
+  lines.map((line) => ({ method: line.method, amount: line.amount }));
+
 /** Fila mínima que necesitamos para poder actualizar el cobro. */
 interface VisitPatientRow {
   id: string;
@@ -41,6 +52,75 @@ export async function markVisitDone(visit: PaymentVisit & { id: string }): Promi
   const { error } = await supabase.from("visits").update({ status }).eq("id", visit.id);
   if (error) return { ok: false, error: error.message };
   return { ok: true, status };
+}
+
+/** Datos que hacen falta para recalcular el neto estimado de la visita. */
+export interface FiscalVisitRow extends PaymentVisit {
+  id: string;
+  travel_cost?: number | string | null;
+  material_cost?: number | string | null;
+  other_expenses?: number | string | null;
+}
+
+export interface VisitFiscalPatch {
+  /** `null` deja la visita otra vez sin clasificar (nunca se asume un valor). */
+  incomeType: IncomeType | null;
+  /** Retención de la factura. Se ignora en `Particular`, que nunca lleva. */
+  irpfPercentage?: number | null;
+  /** `null` borra el número de factura apuntado. */
+  invoiceNumber?: string | null;
+}
+
+/**
+ * Retención efectiva según quién paga: la entidad retiene, el particular no.
+ *
+ * Sin porcentaje utilizable se aplica el 15 % por defecto —el mismo criterio que
+ * `empresaIrpfPercentage()`—, nunca 0 %: un 0 % silencioso haría creer que esa
+ * factura no lleva retención. El valor no se redondea: 7,125 % es un porcentaje
+ * legítimo y redondearlo cambiaría el dinero retenido.
+ */
+export function effectiveIrpf(patch: VisitFiscalPatch): number {
+  if (patch.incomeType !== "Empresa") return 0;
+  const raw = patch.irpfPercentage;
+  if (raw === null || raw === undefined) return DEFAULT_EMPRESA_IRPF;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0 || value > 100) return DEFAULT_EMPRESA_IRPF;
+  return value;
+}
+
+/**
+ * Guarda la clasificación fiscal de una visita: quién paga, la retención y el
+ * número de factura.
+ *
+ * Recalcula también `estimated_net_amount` con la misma fórmula que el resto de
+ * la app (bruto − IRPF − desplazamiento − material − otros gastos): si no, la
+ * tarjeta «Neto est.» de la visita seguiría mostrando el neto de la retención
+ * anterior y contradiría a Finanzas.
+ */
+export async function updateVisitFiscalData(
+  visit: FiscalVisitRow,
+  patch: VisitFiscalPatch,
+): Promise<ActionResult> {
+  const gross = visitTotal(visit);
+  const irpfPercentage = effectiveIrpf(patch);
+  const expenses =
+    Math.max(0, toAmount(visit.travel_cost)) +
+    Math.max(0, toAmount(visit.material_cost)) +
+    Math.max(0, toAmount(visit.other_expenses));
+  const net = roundCents(gross - (gross * irpfPercentage) / 100 - expenses);
+  const invoiceNumber = (patch.invoiceNumber ?? "").trim();
+
+  const { error } = await supabase
+    .from("visits")
+    .update({
+      income_type: patch.incomeType,
+      irpf_percentage: irpfPercentage,
+      invoice_number: invoiceNumber === "" ? null : invoiceNumber,
+      estimated_net_amount: net,
+    })
+    .eq("id", visit.id);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
 }
 
 /**
@@ -82,7 +162,7 @@ export async function registerVisitPayment(
         .update({
           payment_status: "Cobrado",
           paid_at: paidAt,
-          payment_breakdown: shouldStoreBreakdown ? perPatient[index] ?? [] : null,
+          payment_breakdown: shouldStoreBreakdown ? toJsonLines(perPatient[index] ?? []) : null,
         })
         .eq("id", row.id),
     );
@@ -100,7 +180,7 @@ export async function registerVisitPayment(
       price_charged: visitTotal(visit),
       payment_status: "Cobrado",
       paid_at: paidAt,
-      payment_breakdown: clean,
+      payment_breakdown: toJsonLines(clean),
       attended: true,
     });
     if (insertError) return { ok: false, error: insertError.message };

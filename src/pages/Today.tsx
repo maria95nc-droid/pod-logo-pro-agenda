@@ -7,7 +7,9 @@ import { toast } from "sonner";
 import { useVisits, useCenters, usePatients, useMaterials, useInvalidateAll } from "@/hooks/useData";
 import { calculateStreak, isCompletedVisit } from "@/lib/streak";
 import { buildCallReminders } from "@/lib/visitReminders";
+import { buildModelo130Reminders, type FiscalVisit } from "@/lib/fiscalCalculations";
 import { CallReminderCard } from "@/components/reminders/CallReminder";
+import { Modelo130ReminderCard } from "@/components/fiscal/Modelo130Reminder";
 import { markVisitDone } from "@/lib/visitActions";
 import { isQuickAggregateRow } from "@/lib/quickEntry";
 import { StreakBadge } from "@/components/StreakBadge";
@@ -79,6 +81,13 @@ export default function Today() {
   const callReminders = useMemo(
     () => buildCallReminders(centers, visits, fromIsoDate(todayIso)),
     [centers, visits, todayIso],
+  );
+
+  // Trimestres que cerraron (o van a cerrar) por encima del 30 % de ingresos sin
+  // retención: toca presentar el Modelo 130 y hay un plazo con fecha límite.
+  const taxReminders = useMemo(
+    () => buildModelo130Reminders(visits as unknown as FiscalVisit[], fromIsoDate(todayIso)),
+    [visits, todayIso],
   );
 
   // Se busca por id (y no se guarda la visita en el estado) para que la hoja de
@@ -226,12 +235,19 @@ export default function Today() {
         </section>
       )}
 
-      {(lowStock.length > 0 || pendingPayments.length > 0 || callReminders.length > 0) && (
+      {(lowStock.length > 0 ||
+        pendingPayments.length > 0 ||
+        callReminders.length > 0 ||
+        taxReminders.length > 0) && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-muted-foreground">Avisos</h2>
-          {/* Primero lo que exige una llamada hoy: es lo único en rojo. */}
+          {/* Primero lo que exige una llamada hoy y lo que tiene fecha límite
+              con Hacienda: son los dos únicos avisos en rojo. */}
           {callReminders.map((reminder) => (
             <CallReminderCard key={reminder.centerId} reminder={reminder} />
+          ))}
+          {taxReminders.map((reminder) => (
+            <Modelo130ReminderCard key={`${reminder.quarter.year}-${reminder.quarter.quarter}`} reminder={reminder} />
           ))}
           {pendingPayments.length > 0 && (
             <Link to="/finanzas">

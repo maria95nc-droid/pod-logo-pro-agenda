@@ -1,6 +1,7 @@
 import { monthLabel } from "@/lib/calendar";
 import { CANCELLED_STATUS, dayKey, monthKey } from "@/lib/agendaStats";
-import { centerInfo, type CenterInfo } from "@/lib/centers";
+import { centerInfo, isHomeLikeCenter, type CenterInfo } from "@/lib/centers";
+import { normalizeIncomeType, type IncomeType } from "@/lib/fiscalCalculations";
 import {
   describeLines,
   isAggregateVisitPatient,
@@ -48,6 +49,9 @@ export interface LedgerVisit {
   patients_count?: number | string | null;
   center_id?: string | null;
   general_notes?: string | null;
+  /** Quién paga: `Empresa`, `Particular` o `null` (sin clasificar todavía). */
+  income_type?: string | null;
+  invoice_number?: string | null;
   visit_patients?: LedgerVisitPatient[] | null;
 }
 
@@ -79,6 +83,10 @@ export interface LedgerEntry {
   /** Trabajo registrado sin importe todavía (pendiente de facturar por la gestora). */
   unbilled: boolean;
   note: string | null;
+  /** Quién paga, para el filtro fiscal; `null` = sin clasificar. */
+  incomeType: IncomeType | null;
+  /** Número de factura apuntado, si lo hay. */
+  invoiceNumber: string | null;
 }
 
 /** Estados de visita que ya se dan por cobrados o facturados. */
@@ -219,8 +227,13 @@ export function buildLedgerEntries(
       payments: collectPayments(vps),
       fallbackMethod: center.paymentMethod,
       cancelled,
-      unbilled: !cancelled && gross <= 0,
+      // Sólo el 0 es «trabajo sin importe todavía»: un importe negativo es una
+      // devolución y tiene que verse como el dinero que sale, no como un
+      // pendiente de facturar.
+      unbilled: !cancelled && gross === 0,
       note: clean(visit.general_notes),
+      incomeType: normalizeIncomeType(visit.income_type),
+      invoiceNumber: clean(visit.invoice_number),
     });
   }
 
@@ -262,20 +275,26 @@ export const ALL_FILTER = "all";
 /** Estados por los que el usuario filtra de verdad (no son estados de visita). */
 export type LedgerStateFilter = "all" | "pending" | "unbilled" | "settled";
 
+/** Quién paga: los dos valores reales, `none` para las que faltan por clasificar. */
+export type LedgerPayerFilter = "all" | IncomeType | "none";
+
 export interface LedgerFilters {
   /** `yyyy-mm` o `all`. */
   month: string;
   /** id de centro, `home` (sólo domicilios) o `all`. */
   centerId: string;
   state: LedgerStateFilter;
+  payer: LedgerPayerFilter;
 }
 
 export const HOME_FILTER = "home";
+export const UNCLASSIFIED_PAYER_FILTER = "none";
 
 export const EMPTY_FILTERS: Readonly<LedgerFilters> = Object.freeze({
   month: ALL_FILTER,
   centerId: ALL_FILTER,
   state: ALL_FILTER,
+  payer: ALL_FILTER,
 });
 
 const matchesState = (entry: LedgerEntry, state: LedgerStateFilter): boolean => {
@@ -293,14 +312,24 @@ const matchesState = (entry: LedgerEntry, state: LedgerStateFilter): boolean => 
   }
 };
 
+const matchesPayer = (entry: LedgerEntry, payer: LedgerPayerFilter): boolean => {
+  if (payer === ALL_FILTER) return true;
+  if (payer === UNCLASSIFIED_PAYER_FILTER) return entry.incomeType === null;
+  return entry.incomeType === payer;
+};
+
 export function filterLedger(entries: readonly LedgerEntry[], filters: LedgerFilters): LedgerEntry[] {
   return entries.filter((entry) => {
     if (filters.month !== ALL_FILTER && entry.month !== filters.month) return false;
     if (filters.centerId === HOME_FILTER) {
-      if (!entry.center.isHome) return false;
+      // Mismo criterio que el seguimiento de domicilios de Finanzas
+      // (`isHomeLikeCenter`): si aquí se mirase sólo el tipo, el enlace «ver
+      // detalle» mostraría menos visitas que el recuento que lo enlaza.
+      if (!isHomeLikeCenter(entry.center)) return false;
     } else if (filters.centerId !== ALL_FILTER && entry.center.id !== filters.centerId) {
       return false;
     }
+    if (!matchesPayer(entry, filters.payer)) return false;
     return matchesState(entry, filters.state);
   });
 }

@@ -4,12 +4,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Search, Phone, MapPin, AlertTriangle, Building2, Pencil, Download, Loader2 } from "lucide-react";
+import { Plus, Search, Phone, MapPin, AlertTriangle, Building2, Pencil, Download, Loader2, CalendarClock, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { MicButton } from "@/components/voice/MicButton";
 import { useCenters, usePatients, useInvalidateAll, useKnownCenters } from "@/hooks/useData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { frequencyLabel, normalizeFrequencyWeeks } from "@/lib/visitReminders";
 
 export default function Patients() {
   const [query, setQuery] = useState("");
@@ -101,7 +102,7 @@ export default function Patients() {
                     </div>
                     <div className="flex items-center gap-1">
                       {p.default_price && <span className="text-xs font-semibold text-primary">{p.default_price}€</span>}
-                      <Button asChild size="icon" variant="ghost" aria-label="Editar paciente">
+                      <Button asChild size="icon" variant="ghost" aria-label={`Editar ${p.full_name}`}>
                         <Link to={`/pacientes/${p.id}/editar`}><Pencil className="h-4 w-4" /></Link>
                       </Button>
                     </div>
@@ -135,6 +136,10 @@ export default function Patients() {
           <div className="space-y-2">
             {activeCenters.map((c) => {
               const count = patients.filter((p) => p.center_id === c.id).length;
+              // Cadencia y hora de llegada: lo que David necesita ver de un
+              // vistazo antes de organizar la semana (ver la franja de abajo).
+              const cadenceWeeks = normalizeFrequencyWeeks(c.visit_frequency_weeks);
+              const startTime = (c.usual_schedule ?? "").trim();
               return (
               <Card key={c.id} className="shadow-card transition-smooth hover:shadow-elevated">
                   <CardContent className="p-4">
@@ -144,19 +149,46 @@ export default function Patients() {
                           <Building2 className="h-3 w-3" />{c.type}
                         </div>
                         <p className="font-semibold">{c.name}</p>
-                        <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-                          {c.address && <p className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{c.address}{c.city ? `, ${c.city}` : ""}</p>}
-                          {c.contact_phone && <p className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{c.contact_phone}</p>}
+                        {/* `flex` en vez de `inline-flex` suelto: así dirección y
+                            teléfono no se pegan el uno al otro cuando caben en
+                            la misma línea. */}
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                          {c.address && <span className="inline-flex min-w-0 items-center gap-1"><MapPin className="h-3 w-3 shrink-0" aria-hidden="true" /><span className="truncate">{c.address}{c.city ? `, ${c.city}` : ""}</span></span>}
+                          {c.contact_phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3 shrink-0" aria-hidden="true" />{c.contact_phone}</span>}
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1 text-xs">
                         <p className="font-semibold">{count} pac.</p>
                         {c.default_price_per_patient && <p className="font-semibold text-primary">{c.default_price_per_patient}€</p>}
-                        <Button asChild size="icon" variant="ghost" aria-label="Editar centro">
+                        <Button asChild size="icon" variant="ghost" aria-label={`Editar ${c.name}`}>
                           <Link to={`/centros/${c.id}/editar`}><Pencil className="h-4 w-4" /></Link>
                         </Button>
                       </div>
                     </div>
+
+                    {/* Franja de cadencia y hora de llegada. Va en rojo (`--alert`),
+                        no en el verde de la app, porque es el dato que David
+                        consulta para saber cuándo le toca volver y a qué hora
+                        lo esperan: mismo código de color que el aviso de
+                        «toca llamar». */}
+                    {(cadenceWeeks !== null || startTime !== "") && (
+                      <div className="mt-3 flex w-fit max-w-full flex-wrap items-center gap-x-4 gap-y-1 rounded-md bg-alert-bg px-2.5 py-2 text-xs font-semibold text-alert">
+                        {cadenceWeeks !== null && (
+                          <span className="inline-flex min-w-0 items-center gap-1.5">
+                            <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            <span className="sr-only">Cada cuánto voy: </span>
+                            <span className="truncate">{frequencyLabel(cadenceWeeks)}</span>
+                          </span>
+                        )}
+                        {startTime !== "" && (
+                          <span className="inline-flex min-w-0 items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            <span className="sr-only">Hora de inicio: </span>
+                            <span className="truncate">{startTime}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               );

@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { IncomeType } from "@/lib/fiscalCalculations";
 import { roundCents, toAmount } from "@/lib/payments";
 import { toIsoDate } from "@/lib/format";
 import type { VisitStatus } from "@/types";
@@ -141,6 +142,12 @@ export interface QuickVisitInput {
   patientsCount: number;
   irpfPercentage: number;
   travelCost: number;
+  /**
+   * Quién paga la visita. Obligatorio de decidir en la interfaz: `null` sólo es
+   * válido cuando de verdad no se sabe, y entonces la visita queda marcada como
+   * «sin clasificar» para preguntarlo después — nunca se asume un valor.
+   */
+  incomeType: IncomeType | null;
 }
 
 export interface QuickVisitResult extends QuickResult {
@@ -165,7 +172,10 @@ export async function createQuickVisit(input: QuickVisitInput): Promise<QuickVis
   const patientsCount = clampPatientsCount(input.patientsCount);
   const price = Math.max(0, roundCents(toAmount(input.pricePerPatient)));
   const gross = roundCents(price * patientsCount);
-  const irpfPercentage = Math.max(0, toAmount(input.irpfPercentage));
+  // Invariante de la propia función, no sólo de la interfaz: si paga el
+  // paciente no hay retención, aunque llegue un porcentaje por error.
+  const irpfPercentage =
+    input.incomeType === "Particular" ? 0 : Math.min(100, Math.max(0, toAmount(input.irpfPercentage)));
   const travelCost = Math.max(0, roundCents(toAmount(input.travelCost)));
   const net = roundCents(gross - (gross * irpfPercentage) / 100 - travelCost);
   const status = quickVisitStatus(input.date, gross);
@@ -184,6 +194,7 @@ export async function createQuickVisit(input: QuickVisitInput): Promise<QuickVis
       travel_cost: travelCost,
       estimated_net_amount: net,
       patients_count: patientsCount,
+      income_type: input.incomeType,
     })
     .select("id")
     .single();

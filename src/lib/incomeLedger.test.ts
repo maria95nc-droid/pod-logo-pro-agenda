@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildCenterIndex } from "@/lib/centers";
 import {
+  EMPTY_FILTERS,
   buildLedgerEntries,
   centerOptions,
   collectPayments,
@@ -213,6 +214,24 @@ describe("splitAmountsOf", () => {
   });
 });
 
+describe("importes negativos", () => {
+  it("una devolución no es «pendiente de facturar»", () => {
+    // Las devoluciones se apuntan con importe negativo: pintarlas como trabajo
+    // sin facturar escondería el dinero que sale.
+    const [entry] = buildLedgerEntries([visit({ id: "devolucion", visit_date: "2026-09-20", gross_amount: -30 })], centers);
+    expect(entry.gross).toBe(-30);
+    expect(entry.unbilled).toBe(false);
+  });
+
+  it("el 0 sí es trabajo todavía sin importe", () => {
+    const [entry] = buildLedgerEntries(
+      [visit({ id: "sin-importe", visit_date: "2026-09-20", status: "Realizada", gross_amount: 0 })],
+      centers,
+    );
+    expect(entry.unbilled).toBe(true);
+  });
+});
+
 describe("filterLedger", () => {
   const entries = buildLedgerEntries(
     [
@@ -225,29 +244,29 @@ describe("filterLedger", () => {
   );
 
   it("filtra por mes", () => {
-    expect(filterLedger(entries, { month: "2026-08", centerId: "all", state: "all" }).map((e) => e.id)).toEqual([
+    expect(filterLedger(entries, { ...EMPTY_FILTERS, month: "2026-08" }).map((e) => e.id)).toEqual([
       "domicilio",
       "sin-importe",
     ]);
   });
 
   it("filtra por centro y por domicilios", () => {
-    expect(filterLedger(entries, { month: "all", centerId: "grao", state: "all" }).map((e) => e.id)).toEqual([
+    expect(filterLedger(entries, { ...EMPTY_FILTERS, centerId: "grao" }).map((e) => e.id)).toEqual([
       "sin-importe",
     ]);
-    expect(filterLedger(entries, { month: "all", centerId: "home", state: "all" }).map((e) => e.id)).toEqual([
+    expect(filterLedger(entries, { ...EMPTY_FILTERS, centerId: "home" }).map((e) => e.id)).toEqual([
       "domicilio",
     ]);
   });
 
   it("separa lo pendiente de cobro de lo pendiente de facturar", () => {
-    expect(filterLedger(entries, { month: "all", centerId: "all", state: "pending" }).map((e) => e.id)).toEqual([
+    expect(filterLedger(entries, { ...EMPTY_FILTERS, state: "pending" }).map((e) => e.id)).toEqual([
       "pendiente",
     ]);
-    expect(filterLedger(entries, { month: "all", centerId: "all", state: "unbilled" }).map((e) => e.id)).toEqual([
+    expect(filterLedger(entries, { ...EMPTY_FILTERS, state: "unbilled" }).map((e) => e.id)).toEqual([
       "sin-importe",
     ]);
-    expect(filterLedger(entries, { month: "all", centerId: "all", state: "settled" }).map((e) => e.id)).toEqual([
+    expect(filterLedger(entries, { ...EMPTY_FILTERS, state: "settled" }).map((e) => e.id)).toEqual([
       "domicilio",
       "cobrada",
     ]);

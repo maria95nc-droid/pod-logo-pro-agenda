@@ -1,15 +1,24 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
-import { Loader2, Minus, Plus, Zap } from "lucide-react";
+import { Loader2, Minus, Plus, TriangleAlert, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { defaultUserSettings, useCenters, useUserSettings } from "@/hooks/useData";
+import { IncomeTypeChoice } from "@/components/fiscal/IncomeTypeChoice";
+import { defaultUserSettings, useCenters, useUserSettings, useVisits } from "@/hooks/useData";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatEUR, toIsoDate } from "@/lib/format";
 import { roundCents } from "@/lib/payments";
+import {
+  DEFAULT_EMPRESA_IRPF,
+  centerPriceHistory,
+  normalizeIncomeType,
+  priceAnomaly,
+  type FiscalVisit,
+  type IncomeType,
+} from "@/lib/fiscalCalculations";
 import { MAX_PATIENTS_PER_VISIT, clampPatientsCount, createQuickVisit, quickVisitStatus } from "@/lib/quickEntry";
 
 const parseNumber = (value: string): number => {
@@ -38,12 +47,17 @@ export function QuickVisitSheet({ open, onOpenChange, initialCenterId, onCreated
   const fieldId = useId();
   const { user } = useAuth();
   const { data: centers = [] } = useCenters();
+  const { data: visits = [] } = useVisits();
   const { data: settings = defaultUserSettings } = useUserSettings();
 
   const [centerId, setCenterId] = useState("");
   const [price, setPrice] = useState("");
   const [patients, setPatients] = useState(1);
   const [date, setDate] = useState(() => toIsoDate());
+  const [incomeType, setIncomeType] = useState<IncomeType | null>(null);
+  // Sólo se marca en rojo cuando ya se ha intentado guardar: no se recibe al
+  // usuario con un formulario en error.
+  const [payerMissing, setPayerMissing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const activeCenters = useMemo(() => centers.filter((center) => center.is_active !== false), [centers]);
@@ -54,6 +68,11 @@ export function QuickVisitSheet({ open, onOpenChange, initialCenterId, onCreated
       const center = centers.find((c) => c.id === id);
       const defaultPrice = center?.default_price_per_patient;
       setPrice(defaultPrice != null ? String(Number(defaultPrice)).replace(".", ",") : "");
+      // Quién paga se **precarga** con lo habitual del centro, editable: si el
+      // centro no lo tiene guardado, la pregunta se queda sin contestar a
+      // propósito y no se puede guardar hasta contestarla.
+      setIncomeType(normalizeIncomeType(center?.default_income_type));
+      setPayerMissing(false);
     },
     [centers],
   );
@@ -64,10 +83,12 @@ export function QuickVisitSheet({ open, onOpenChange, initialCenterId, onCreated
     setBusy(false);
     setPatients(1);
     setDate(toIsoDate());
+    setPayerMissing(false);
     if (initialCenterId) applyCenter(initialCenterId);
     else {
       setCenterId("");
       setPrice("");
+      setIncomeType(null);
     }
   }, [open, initialCenterId, applyCenter]);
 
@@ -76,10 +97,28 @@ export function QuickVisitSheet({ open, onOpenChange, initialCenterId, onCreated
   const status = quickVisitStatus(date, gross);
   const canSubmit = !busy && !!user && !!centerId && !!date;
 
+  const selectedCenter = centerId ? centers.find((center) => center.id === centerId) : undefined;
+  const centerSuggestion = normalizeIncomeType(selectedCenter?.default_income_type);
+
+  // Aviso de precio anómalo: sólo avisa, nunca corrige. Se compara con la media
+  // histórica del mismo centro, ponderada por pacientes.
+  const anomaly = useMemo(() => {
+    if (!centerId) return null;
+    const history = centerPriceHistory(visits as unknown as FiscalVisit[], centerId);
+    return priceAnomaly(history, pricePerPatient);
+  }, [visits, centerId, pricePerPatient]);
+
   const changePatients = (delta: number) => setPatients((current) => clampPatientsCount(current + delta));
 
   const handleSave = async () => {
     if (!user || !canSubmit) return;
+    // Nunca se asume quién paga: de esa respuesta salen la retención y el
+    // semáforo del Modelo 130.
+    if (incomeType === null) {
+      setPayerMissing(true);
+      toast.error("Dinos quién paga esta visita");
+      return;
+    }
     setBusy(true);
     // Una visita registrada hoy se apunta a la hora actual: sin hora acabaría
     // colándose como «Próxima visita» por delante de las que faltan por hacer.
@@ -93,7 +132,10 @@ export function QuickVisitSheet({ open, onOpenChange, initialCenterId, onCreated
       endTime: nowTime,
       pricePerPatient,
       patientsCount: patients,
-      irpfPercentage: Number(settings.default_irpf_percentage) || 0,
+      incomeType,
+      // La retención la marca quién paga, no una configuración global: la
+      // entidad retiene el 15 % y el paciente no retiene nada.
+      irpfPercentage: incomeType === "Empresa" ? DEFAULT_EMPRESA_IRPF : 0,
       travelCost: settings.apply_travel_per_visit ? Number(settings.default_travel_cost) || 0 : 0,
     });
     setBusy(false);
@@ -211,6 +253,28 @@ export function QuickVisitSheet({ open, onOpenChange, initialCenterId, onCreated
               </Button>
             </div>
           </div>
+
+          <IncomeTypeChoice
+            idPrefix={fieldId}
+            value={incomeType}
+            onChange={(next) => {
+              setIncomeType(next);
+              setPayerMissing(false);
+            }}
+            suggestion={centerSuggestion}
+            invalid={payerMissing && incomeType === null}
+          />
+
+          {/* Aviso de precio distinto de lo habitual: informa, no corrige. */}
+          {anomaly && (
+            <p className="flex items-start gap-2 rounded-xl bg-streak-bg p-3 text-xs text-foreground">
+              <TriangleAlert className="mt-px h-4 w-4 shrink-0 text-streak" aria-hidden="true" />
+              <span>
+                {formatEUR(anomaly.price)} por paciente es {anomaly.higher ? "más" : "menos"} de lo habitual en este
+                centro ({formatEUR(anomaly.average)} de media en {anomaly.visits} visitas). ¿Es correcto?
+              </span>
+            </p>
+          )}
 
           <div className="flex items-baseline justify-between rounded-xl border border-primary/20 bg-primary-soft px-4 py-3">
             <span className="text-sm font-medium text-foreground">Importe bruto</span>

@@ -22,6 +22,7 @@ export type Database = {
           contact_person: string | null
           contact_phone: string | null
           created_at: string
+          default_income_type: string | null
           default_price_per_patient: number | null
           email: string | null
           id: string
@@ -45,6 +46,7 @@ export type Database = {
           contact_person?: string | null
           contact_phone?: string | null
           created_at?: string
+          default_income_type?: string | null
           default_price_per_patient?: number | null
           email?: string | null
           id?: string
@@ -68,6 +70,7 @@ export type Database = {
           contact_person?: string | null
           contact_phone?: string | null
           created_at?: string
+          default_income_type?: string | null
           default_price_per_patient?: number | null
           email?: string | null
           id?: string
@@ -411,11 +414,15 @@ export type Database = {
           general_notes: string | null
           gross_amount: number
           id: string
+          import_batch: string | null
+          income_type: string | null
+          invoice_number: string | null
           irpf_percentage: number
           material_cost: number
           material_notes: string | null
           other_expenses: number
           patients_count: number
+          source_ref: string | null
           start_time: string | null
           status: string
           travel_cost: number
@@ -433,11 +440,15 @@ export type Database = {
           general_notes?: string | null
           gross_amount?: number
           id?: string
+          import_batch?: string | null
+          income_type?: string | null
+          invoice_number?: string | null
           irpf_percentage?: number
           material_cost?: number
           material_notes?: string | null
           other_expenses?: number
           patients_count?: number
+          source_ref?: string | null
           start_time?: string | null
           status?: string
           travel_cost?: number
@@ -455,11 +466,15 @@ export type Database = {
           general_notes?: string | null
           gross_amount?: number
           id?: string
+          import_batch?: string | null
+          income_type?: string | null
+          invoice_number?: string | null
           irpf_percentage?: number
           material_cost?: number
           material_notes?: string | null
           other_expenses?: number
           patients_count?: number
+          source_ref?: string | null
           start_time?: string | null
           status?: string
           travel_cost?: number

@@ -4,7 +4,21 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { supabase } from "@/integrations/supabase/client";
 import { attendedPatientsCount, type PaymentVisit } from "@/lib/payments";
+import { frequencyLabel, normalizeFrequencyWeeks } from "@/lib/visitReminders";
 import type { UserSettings } from "@/hooks/useData";
+
+/**
+ * Cada cuánto se visita un centro, para las exportaciones.
+ *
+ * Manda la columna numérica `visit_frequency_weeks`, que es la que se edita y
+ * la que usan los avisos; `visit_frequency` es la nota de texto antigua, que ya
+ * no se puede cambiar desde el formulario y sólo se usa si no hay número.
+ */
+function centerFrequencyText(center: any): string {
+  const weeks = normalizeFrequencyWeeks(center?.visit_frequency_weeks);
+  if (weeks !== null) return frequencyLabel(weeks);
+  return center?.visit_frequency || "";
+}
 
 export interface ExportFilters {
   from?: string; // yyyy-mm-dd
@@ -183,7 +197,10 @@ export function buildXlsx(d: ExportData): Blob {
     const bruto = vps.length
       ? vps.reduce((s: number, vp: any) => s + num(vp.price_charged), 0)
       : num(v.gross_amount);
-    const irpfPct = num(v.irpf_percentage) || s.irpfPct;
+    // Un 0 % es un dato real (visita que paga el paciente, sin retención): con
+    // `||` caía al porcentaje global y el informe inventaba una retención.
+    const ownIrpf = v.irpf_percentage;
+    const irpfPct = ownIrpf === null || ownIrpf === undefined || ownIrpf === "" ? s.irpfPct : num(ownIrpf);
     const irpfE = (bruto * irpfPct) / 100;
     const travel = num(v.travel_cost);
     const mat = num(v.material_cost);
@@ -228,7 +245,7 @@ export function buildXlsx(d: ExportData): Blob {
     cenRows.push([
       c.name, c.type || "", c.address || "", c.city || "", c.contact_person || "",
       c.contact_phone || "", c.default_price_per_patient != null ? eur(num(c.default_price_per_patient)) : "",
-      c.payment_method || "", c.visit_frequency || "", c.is_active ? "Sí" : "No", c.notes || "",
+      c.payment_method || "", centerFrequencyText(c), c.is_active ? "Sí" : "No", c.notes || "",
     ]);
   }
   XLSX.utils.book_append_sheet(wb, aoaToSheet(cenRows, [22,16,26,16,18,14,16,16,18,8,30]), "Centros");

@@ -16,8 +16,16 @@ import { isCompletedVisit } from "@/lib/streak";
  * `today`, así que se pueden probar con una fecha fija.
  */
 
-/** Cadencias reales que usa David; el desplegable permite además un número libre. */
-export const VISIT_FREQUENCY_PRESETS = [2, 4, 6, 8] as const;
+/**
+ * Cadencias reales que usa David, en semanas; el desplegable permite además un
+ * número libre. Él las piensa y las dice en meses («cada mes», «mes y medio»,
+ * «dos meses», «tres meses»), así que la lista cubre esas cuatro más la
+ * quincenal, y se etiquetan con `frequencyLabel`.
+ */
+export const VISIT_FREQUENCY_PRESETS = [2, 4, 6, 8, 12] as const;
+
+/** Semanas equivalentes a un mes para este cálculo (criterio de David: 4 = 1 mes). */
+const WEEKS_PER_MONTH = 4;
 
 /** Rango admitido para la columna: de semanal a anual. */
 export const MIN_FREQUENCY_WEEKS = 1;
@@ -78,15 +86,29 @@ export function normalizeFrequencyWeeks(value: unknown): number | null {
   return weeks;
 }
 
-/** Etiqueta humana de una cadencia: «Cada 4 semanas (mensual)». */
-export function frequencyWeeksLabel(weeks: number): string {
-  const equivalence =
-    weeks === 2 ? " (quincenal)"
-    : weeks === 4 ? " (mensual)"
-    : weeks === 6 ? " (mes y medio)"
-    : weeks === 8 ? " (cada 2 meses)"
-    : "";
-  return `Cada ${weeks} semana${weeks === 1 ? "" : "s"}${equivalence}`;
+/** «3 semanas», «1 semana»: la cadencia tal cual se guarda en la columna. */
+export const weeksText = (weeks: number): string => `${weeks} semana${weeks === 1 ? "" : "s"}`;
+
+/**
+ * Etiqueta humana de una cadencia, **en meses**: «Cada mes», «Cada mes y
+ * medio», «Cada 2 meses»… David razona en meses aunque la columna guarde
+ * semanas (4 = un mes), así que es lo que se pinta en la ficha del centro y en
+ * el desplegable del formulario.
+ *
+ * Sólo se traduce a meses cuando la equivalencia es exacta (semanas pares: 6 =
+ * mes y medio, 10 = dos meses y medio). Una cadencia impar se queda en semanas
+ * en vez de redondearse, porque el número que se ve en la ficha tiene que ser
+ * el mismo con el que se calcula el aviso de «toca llamar»: si 5 y 6 semanas se
+ * leyeran igual, la ficha estaría mintiendo. Por debajo del mes también se
+ * habla en semanas, que es como se dice de verdad.
+ */
+export function frequencyLabel(weeks: number): string {
+  if (weeks < WEEKS_PER_MONTH || weeks % 2 !== 0) return `Cada ${weeks === 1 ? "semana" : weeksText(weeks)}`;
+  // Se cuenta en medios meses (2 semanas) y luego se separa en enteros + medio.
+  const halfMonths = weeks / (WEEKS_PER_MONTH / 2);
+  const months = Math.floor(halfMonths / 2);
+  const andAHalf = halfMonths % 2 === 1 ? " y medio" : "";
+  return months === 1 ? `Cada mes${andAHalf}` : `Cada ${months} meses${andAHalf}`;
 }
 
 /** Días civiles entre dos fechas `yyyy-mm-dd` (positivo si `toIso` es posterior). */
