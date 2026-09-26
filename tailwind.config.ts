@@ -47,6 +47,13 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        /* Aviso de acción pendiente (rojo de «toca llamar» y de la cadencia de
+           visita en la ficha del centro). Ver los tokens en src/index.css. */
+        alert: {
+          DEFAULT: "hsl(var(--alert))",
+          bg: "hsl(var(--alert-bg))",
+          fg: "hsl(var(--alert-fg))",
+        },
         streak: {
           DEFAULT: "hsl(var(--streak))",
           bg: "hsl(var(--streak-bg))",
