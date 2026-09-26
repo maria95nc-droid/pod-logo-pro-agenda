@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ChevronRight, Filter, Loader2, ReceiptText, Wallet } from "lucide-react";
+import { ArrowLeft, ChevronDown, Filter, Loader2, ReceiptText, Users, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -11,7 +12,7 @@ import { VisitAmount } from "@/components/VisitAmount";
 import { useCenters, useVisits } from "@/hooks/useData";
 import { buildCenterIndex } from "@/lib/centers";
 import { MONTHS_SHORT, WEEKDAYS, monthLabel, weekdayIndex } from "@/lib/calendar";
-import { formatEUR, fromIsoDate } from "@/lib/format";
+import { formatDate, formatEUR, fromIsoDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   ALL_FILTER,
@@ -25,6 +26,7 @@ import {
   ledgerTotals,
   monthOptions,
   type LedgerEntry,
+  type LedgerPatientLine,
   type LedgerFilters,
   type LedgerPayerFilter,
   type LedgerStateFilter,
@@ -368,80 +370,227 @@ function DateChip({ date, iso }: { date: Date; iso: string }) {
   );
 }
 
+/**
+ * Fila del libro de movimientos, desplegable.
+ *
+ * El resumen sigue siendo un enlace a la visita (tocar la fila navega, como
+ * antes), y el detalle se abre con su propio botón: así se ve de dónde sale el
+ * dinero sin salir de la pantalla, sin perder la navegación de un toque. Nada
+ * de lo que ya se veía se ha escondido dentro del desplegable; sólo se añade.
+ */
 function EntryRow({ entry }: { entry: LedgerEntry }) {
+  const [open, setOpen] = useState(false);
   const date = fromIsoDate(entry.date);
   const source = describePaymentSource(entry, formatEUR);
+  const dateLabel = Number.isNaN(date.getTime()) ? entry.date : formatDate(date);
 
   return (
-    <Link
-      to={`/visita/${entry.id}`}
-      className="flex items-start gap-3 rounded-xl border border-border bg-card p-3 shadow-card transition-smooth hover:shadow-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.99]"
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="rounded-xl border border-border bg-card shadow-card transition-smooth hover:shadow-elevated"
     >
-      <DateChip date={date} iso={entry.date} />
+      <div className="flex items-start gap-1.5 p-3">
+        <Link
+          to={`/visita/${entry.id}`}
+          className="flex min-w-0 flex-1 items-start gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.99]"
+        >
+          <DateChip date={date} iso={entry.date} />
 
-      <span className="min-w-0 flex-1">
-        <span className="flex items-start justify-between gap-2">
-          <CenterLabel center={entry.center} showType className="min-w-0 flex-1 text-sm" />
-          {/* Una visita cancelada se lista, pero su importe no cuenta: se marca
-              tachado para que no se confunda con dinero que entra. */}
-          <VisitAmount
-            gross={entry.gross}
-            unbilled={entry.unbilled}
-            pendingLabel="Pendiente de facturar"
-            className={cn(
-              "shrink-0",
-              entry.unbilled ? "text-right text-[11px]" : "text-sm",
-              entry.cancelled && "font-normal text-muted-foreground line-through",
-            )}
-          />
-        </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-start justify-between gap-2">
+              <CenterLabel center={entry.center} showType className="min-w-0 flex-1 text-sm" />
+              {/* Una visita cancelada se lista, pero su importe no cuenta: se marca
+                  tachado para que no se confunda con dinero que entra. */}
+              <VisitAmount
+                gross={entry.gross}
+                unbilled={entry.unbilled}
+                pendingLabel="Pendiente de facturar"
+                className={cn(
+                  "shrink-0",
+                  entry.unbilled ? "text-right text-[11px]" : "text-sm",
+                  entry.cancelled && "font-normal text-muted-foreground line-through",
+                )}
+              />
+            </span>
 
-        <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-          <StatusBadge status={entry.status as VisitStatus} className="text-[10px]" />
-          {entry.patients > 0 ? (
-            <span className="tabular-nums">
-              {entry.patients} pac.
-              {entry.pricePerPatient !== null && (
-                <>
-                  {" × "}
-                  {entry.priceIsAverage && <span aria-hidden="true">≈</span>}
-                  <span className="sr-only">{entry.priceIsAverage ? "precio medio " : "precio "}</span>
-                  {formatEUR(entry.pricePerPatient)}
-                </>
+            <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+              <StatusBadge status={entry.status as VisitStatus} className="text-[10px]" />
+              {entry.patients > 0 ? (
+                <span className="tabular-nums">
+                  {entry.patients} pac.
+                  {entry.pricePerPatient !== null && (
+                    <>
+                      {" × "}
+                      {entry.priceIsAverage && <span aria-hidden="true">≈</span>}
+                      <span className="sr-only">{entry.priceIsAverage ? "precio medio " : "precio "}</span>
+                      {formatEUR(entry.pricePerPatient)}
+                    </>
+                  )}
+                </span>
+              ) : (
+                entry.unbilled && <span>Nº de pacientes pendiente</span>
+              )}
+              {entry.pending > 0 && entry.settled > 0 && (
+                <span className="text-status-pending-payment">Falta {formatEUR(entry.pending)}</span>
+              )}
+              {/* Quién paga: es lo que decide la retención y el Modelo 130. */}
+              {entry.incomeType ? (
+                <span>
+                  Paga: {INCOME_TYPE_LABEL[entry.incomeType].toLowerCase()}
+                  {entry.invoiceNumber ? ` · ${entry.invoiceNumber}` : ""}
+                </span>
+              ) : (
+                !entry.cancelled && <span className="font-semibold text-streak">Falta decir quién paga</span>
               )}
             </span>
-          ) : (
-            entry.unbilled && <span>Nº de pacientes pendiente</span>
-          )}
-          {entry.pending > 0 && entry.settled > 0 && (
-            <span className="text-status-pending-payment">Falta {formatEUR(entry.pending)}</span>
-          )}
-          {/* Quién paga: es lo que decide la retención y el Modelo 130. */}
-          {entry.incomeType ? (
-            <span>
-              Paga: {INCOME_TYPE_LABEL[entry.incomeType].toLowerCase()}
-              {entry.invoiceNumber ? ` · ${entry.invoiceNumber}` : ""}
-            </span>
-          ) : (
-            !entry.cancelled && <span className="font-semibold text-streak">Falta decir quién paga</span>
-          )}
-        </span>
 
-        {source && (
-          <span className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <Wallet className="h-3 w-3 shrink-0" aria-hidden="true" />
-            <span className="min-w-0 truncate">
-              {source.exact ? source.text : `Cobro habitual: ${source.text}`}
-            </span>
+            {source && (
+              <span className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Wallet className="h-3 w-3 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 truncate">
+                  {source.exact ? source.text : `Cobro habitual: ${source.text}`}
+                </span>
+              </span>
+            )}
+
+            {entry.unbilled && entry.note && (
+              <span className="mt-1 line-clamp-2 text-[11px] text-streak">{entry.note}</span>
+            )}
           </span>
-        )}
+        </Link>
 
-        {entry.unbilled && entry.note && (
-          <span className="mt-1 line-clamp-2 text-[11px] text-streak">{entry.note}</span>
-        )}
-      </span>
+        {/* Botón propio para desplegar: 40 px de lado, separado del enlace para
+            no anidar un botón dentro de un `<a>`. */}
+        <CollapsibleTrigger className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-smooth hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+          <ChevronDown
+            className={cn("h-4 w-4 transition-transform duration-200", open && "rotate-180")}
+            aria-hidden="true"
+          />
+          <span className="sr-only">
+            {open ? "Ocultar" : "Ver"} el detalle de {entry.center.name} del {dateLabel}
+          </span>
+        </CollapsibleTrigger>
+      </div>
 
-      <ChevronRight className="hidden h-4 w-4 shrink-0 self-center text-muted-foreground sm:block" aria-hidden="true" />
-    </Link>
+      <CollapsibleContent>
+        <EntryDetail entry={entry} />
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/**
+ * Detalle desplegado de una visita: pacientes, cómo entró el dinero y las notas
+ * completas. Sólo se monta al abrir (Radix desmonta el contenido cerrado), así
+ * que un listado de cientos de movimientos no paga nada por tenerlo.
+ */
+function EntryDetail({ entry }: { entry: LedgerEntry }) {
+  const amounts: { label: string; value: string; tone?: string }[] = [
+    { label: "Bruto", value: formatEUR(entry.gross) },
+    { label: "Cobrado", value: formatEUR(entry.settled), tone: "text-status-paid" },
+  ];
+  if (entry.pending > 0) {
+    amounts.push({ label: "Pendiente", value: formatEUR(entry.pending), tone: "text-status-pending-payment" });
+  }
+  if (entry.waived > 0) amounts.push({ label: "No cobra", value: formatEUR(entry.waived) });
+
+  const showLinePayments = entry.patientLines.length > 1;
+
+  return (
+    <div className="space-y-3 border-t border-border p-3">
+      {entry.cancelled && (
+        <p className="text-[11px] text-muted-foreground">
+          Visita cancelada: se lista para tener el histórico completo, pero su importe no suma en ningún total.
+        </p>
+      )}
+
+      {/* Sin este aviso, «Cobrado: 50 €» y una línea que dice «No cobra»
+          aparecerían juntos sin explicación. No cambia ninguna cifra. */}
+      {entry.waivedNotDiscounted > 0 && (
+        <p className="rounded-lg bg-streak-bg p-2.5 text-[11px] text-foreground">
+          <strong className="font-semibold">Revisa este cobro:</strong> hay {formatEUR(entry.waivedNotDiscounted)}{" "}
+          marcados «no cobra», pero como la visita está en «{entry.status}» cuentan igualmente como cobrados. Si ese
+          dinero no ha entrado, cambia el estado de la visita.
+        </p>
+      )}
+
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-4">
+        {amounts.map((amount) => (
+          <div key={amount.label}>
+            <dt className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{amount.label}</dt>
+            <dd className={cn("mt-0.5 text-sm font-bold tabular-nums", amount.tone ?? "text-foreground")}>
+              {amount.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      {entry.patientLines.length > 0 && (
+        <div>
+          <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <Users className="h-3 w-3 shrink-0" aria-hidden="true" />
+            {entry.patientLines.length === 1 && entry.patientLines[0].aggregate ? "Cobro de la visita" : "Pacientes"}
+          </h3>
+          <ul className="mt-1.5 space-y-1.5">
+            {entry.patientLines.map((line) => (
+              <PatientLineRow key={line.key} line={line} showPayments={showLinePayments} />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {entry.payments.length > 0 && (
+        <div>
+          <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <Wallet className="h-3 w-3 shrink-0" aria-hidden="true" />
+            Cómo se cobró
+          </h3>
+          <dl className="mt-1.5 space-y-1">
+            {entry.payments.map((line) => (
+              <div key={line.method} className="flex items-baseline justify-between gap-3 text-xs">
+                <dt className="min-w-0 truncate">{line.method}</dt>
+                <dd className="shrink-0 font-semibold tabular-nums">{formatEUR(line.amount)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
+      {/* Sin desglose guardado se dice de dónde sale la referencia, para no
+          hacer pasar la forma de cobro habitual del centro por un hecho. */}
+      {entry.payments.length === 0 && entry.fallbackMethod && (
+        <p className="text-[11px] text-muted-foreground">
+          No hay desglose guardado de este cobro. La forma de cobro habitual de {entry.center.name} es{" "}
+          <span className="font-medium text-foreground">{entry.fallbackMethod}</span>.
+        </p>
+      )}
+
+      {entry.note && (
+        <div>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Notas</h3>
+          <p className="mt-1 whitespace-pre-line text-xs text-foreground">{entry.note}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PatientLineRow({ line, showPayments }: { line: LedgerPatientLine; showPayments: boolean }) {
+  return (
+    <li className="text-xs">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="min-w-0 flex-1">
+          <span className={cn("break-words", !line.attended && "text-muted-foreground line-through")}>{line.name}</span>
+          {line.status && <span className="ml-1.5 text-[11px] text-muted-foreground">· {line.status}</span>}
+        </span>
+        <span className="shrink-0 font-semibold tabular-nums">{formatEUR(line.amount)}</span>
+      </div>
+      {showPayments && line.payments.length > 0 && (
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          {line.payments.map((payment) => `${payment.method} ${formatEUR(payment.amount)}`).join(" · ")}
+        </p>
+      )}
+    </li>
   );
 }

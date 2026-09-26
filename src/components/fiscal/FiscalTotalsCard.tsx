@@ -2,7 +2,12 @@ import { AlertCircle, PiggyBank } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatEUR } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { CONSERVATIVE_IRPF_RATE, DEFAULT_EMPRESA_IRPF, type FiscalTotals } from "@/lib/fiscalCalculations";
+import {
+  CONSERVATIVE_IRPF_RATE,
+  DEFAULT_EMPRESA_IRPF,
+  RENTA_BUFFER_RATE,
+  type FiscalTotals,
+} from "@/lib/fiscalCalculations";
 
 /**
  * Los tres números del mes, explicados en castellano llano (David no es
@@ -25,6 +30,10 @@ export interface FiscalTotalsCardProps {
 
 export function FiscalTotalsCard({ totals, periodLabel }: FiscalTotalsCardProps) {
   const owes = totals.pendingModelo100 >= 0;
+  // El colchón del 5 % sólo vale si todo viene retenido al 15 %. Se compara con
+  // lo que falta de verdad, con medio céntimo de tolerancia: por debajo de eso
+  // la diferencia no se ve en pantalla y avisar sería ruido.
+  const bufferIsShort = totals.pendingModelo100 - totals.rentaBuffer > 0.005;
 
   return (
     <Card className="shadow-card">
@@ -58,6 +67,53 @@ export function FiscalTotalsCard({ totals, periodLabel }: FiscalTotalsCardProps)
             icon={<PiggyBank className="h-4 w-4" aria-hidden="true" />}
           />
         </dl>
+
+        {/* Retenciones de referencia, las tres una al lado de la otra: el dueño
+            quería ver el 20 % junto a lo que ya le retienen, y el 5 % que le
+            queda por guardar. «Ya retenido» NO lleva el 15 % en la etiqueta: es
+            la retención real factura a factura y hay facturas al 7 %.
+
+            El 5 % sólo coincide con lo que falta de verdad si todo el bruto
+            viene retenido al 15 %. Con ingresos de particulares (sin retención)
+            se queda corto —y ahí es donde se pierde dinero—, así que en cuanto
+            se separa de `pendingModelo100` el aviso lo dice con su cifra. */}
+        <section className="mt-4 border-t border-border pt-3" aria-labelledby="retenciones-ref">
+          <h3 id="retenciones-ref" className="text-xs font-semibold">
+            Retenciones sobre {formatEUR(totals.grossDeclared)} de bruto
+          </h3>
+          <dl className="mt-2 grid grid-cols-3 gap-2">
+            <Reference label="Ya retenido" value={formatEUR(totals.retainedIrpf)} />
+            <Reference
+              label={`Si fuera el ${CONSERVATIVE_IRPF_RATE} %`}
+              value={formatEUR(totals.conservativeIrpf)}
+            />
+            <Reference
+              label={`Aparta el ${RENTA_BUFFER_RATE} %`}
+              value={formatEUR(totals.rentaBuffer)}
+              tone={bufferIsShort ? "muted" : "warm"}
+            />
+          </dl>
+
+          {bufferIsShort ? (
+            <p className="mt-2 flex items-start gap-2 rounded-lg bg-streak-bg p-2.5 text-[11px] leading-snug text-foreground">
+              <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0 text-streak" aria-hidden="true" />
+              <span>
+                <strong className="font-semibold">Este periodo el {RENTA_BUFFER_RATE} % se queda corto.</strong> Supone
+                que todo te lo retienen al {DEFAULT_EMPRESA_IRPF} %, y no es tu caso
+                {totals.grossParticular > 0 ? " (parte la cobras de particulares, sin retención)" : ""}. Lo que falta
+                apartar de verdad son <strong className="font-semibold">{formatEUR(totals.pendingModelo100)}</strong>.
+              </span>
+            </p>
+          ) : (
+            <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+              El {RENTA_BUFFER_RATE} % es una{" "}
+              <strong className="font-semibold text-foreground">estimación aproximada</strong> de la diferencia entre el{" "}
+              {DEFAULT_EMPRESA_IRPF} % que te retienen y el {CONSERVATIVE_IRPF_RATE} % que probablemente te toque
+              pagar: es lo que conviene guardar aparte. La cifra exacta con tus retenciones reales es «
+              {owes ? "falta por apartar" : "te han retenido de más"}».
+            </p>
+          )}
+        </section>
 
         <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-border pt-3 text-xs">
           <div>
@@ -98,7 +154,30 @@ const TONE_CLASS = {
   neutral: "text-foreground",
   warm: "text-streak",
   good: "text-status-paid",
+  /** Para una cifra de referencia que este periodo no es la buena. */
+  muted: "text-muted-foreground",
 } as const;
+
+/**
+ * Cifra de referencia en una celda estrecha: a 320 px caben tres, así que la
+ * etiqueta va arriba en dos líneas y el importe debajo, sin truncar.
+ */
+function Reference({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: keyof typeof TONE_CLASS;
+}) {
+  return (
+    <div className="rounded-lg bg-muted/50 p-2">
+      <dt className="text-[10px] font-medium uppercase leading-tight tracking-wide text-muted-foreground">{label}</dt>
+      <dd className={cn("mt-1 text-sm font-bold tabular-nums", TONE_CLASS[tone])}>{value}</dd>
+    </div>
+  );
+}
 
 function Figure({
   label,

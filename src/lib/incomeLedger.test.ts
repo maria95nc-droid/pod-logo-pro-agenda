@@ -9,8 +9,10 @@ import {
   groupByMonth,
   ledgerTotals,
   monthOptions,
+  patientLinesOf,
   pricePerPatientOf,
   splitAmountsOf,
+  waivedNotDiscountedOf,
   type LedgerVisit,
 } from "@/lib/incomeLedger";
 
@@ -338,5 +340,160 @@ describe("ledgerTotals / groupByMonth / opciones", () => {
       "Residencia El Grao",
       "Residencia Pravia",
     ]);
+  });
+});
+
+// ── Detalle desplegable ──────────────────────────────────────────────────────
+
+describe("patientLinesOf", () => {
+  it("conserva el orden de la visita y trae nombre, importe y estado", () => {
+    const lines = patientLinesOf([
+      { id: "b", patient_id: "p2", patient_name: "Carmen Suárez", price_charged: 18, payment_status: "Pendiente" },
+      { id: "a", patient_id: "p1", patient_name: "Luis Álvarez", price_charged: 14, payment_status: "Cobrado" },
+    ]);
+    expect(lines.map((line) => line.name)).toEqual(["Carmen Suárez", "Luis Álvarez"]);
+    expect(lines[0]).toEqual({
+      key: "b",
+      name: "Carmen Suárez",
+      amount: 18,
+      status: "Pendiente",
+      aggregate: false,
+      attended: true,
+      payments: [],
+    });
+  });
+
+  it("marca como agregada la fila de un registro rápido, sin hacerla pasar por un paciente", () => {
+    const [line] = patientLinesOf([
+      { id: "vp1", patient_id: null, patient_name: "6 pacientes", price_charged: 84, payment_status: "Cobrado" },
+    ]);
+    expect(line.aggregate).toBe(true);
+    expect(line.name).toBe("6 pacientes");
+  });
+
+  it("no inventa un nombre cuando la fila no lo tiene guardado", () => {
+    const lines = patientLinesOf([
+      { id: "x", patient_id: "p1", price_charged: 14 },
+      { id: "y", patient_id: null, price_charged: 70 },
+    ]);
+    expect(lines[0].name).toBe("Paciente 1");
+    expect(lines[1].name).toBe("Pacientes de la visita");
+  });
+
+  it("saca el desglose de formas de pago de cada fila", () => {
+    const [line] = patientLinesOf([
+      {
+        id: "vp1",
+        patient_id: null,
+        patient_name: "7 pacientes",
+        price_charged: 105,
+        payment_status: "Cobrado",
+        payment_breakdown: [
+          { method: "Efectivo", amount: 55 },
+          { method: "Bizum", amount: 50 },
+        ],
+      },
+    ]);
+    expect(line.payments).toEqual([
+      { method: "Efectivo", amount: 55 },
+      { method: "Bizum", amount: 50 },
+    ]);
+  });
+
+  it("aguanta un desglose corrupto sin romperse", () => {
+    const [line] = patientLinesOf([
+      { id: "vp1", patient_id: "p1", patient_name: "Luis", price_charged: "14.5", payment_breakdown: "no-es-json" },
+    ]);
+    expect(line.payments).toEqual([]);
+    expect(line.amount).toBe(14.5);
+    expect(line.status).toBeNull();
+  });
+
+  it("señala al paciente que no acudió y da una clave estable sin id", () => {
+    const lines = patientLinesOf([
+      { patient_id: "p1", patient_name: "Luis", price_charged: 14, attended: false },
+      { patient_id: "p2", patient_name: "Ana", price_charged: 14, attended: true },
+    ]);
+    expect(lines[0].attended).toBe(false);
+    expect(lines[1].attended).toBe(true);
+    expect(lines.map((line) => line.key)).toEqual(["vp-0", "vp-1"]);
+  });
+
+  it("sin filas de pacientes no hay nada que desplegar", () => {
+    expect(patientLinesOf([])).toEqual([]);
+  });
+});
+
+describe("buildLedgerEntries · líneas de pacientes", () => {
+  it("cuelga las líneas de cada visita en su entrada del libro", () => {
+    const [entry] = buildLedgerEntries(
+      [
+        visit({
+          id: "1",
+          visit_date: "2026-07-01",
+          visit_patients: [
+            { id: "a", patient_id: "p1", patient_name: "Luis", price_charged: 14, payment_status: "Cobrado" },
+            { id: "b", patient_id: "p2", patient_name: "Ana", price_charged: 14, payment_status: "Pendiente" },
+          ],
+        }),
+      ],
+      centers,
+    );
+    expect(entry.patientLines.map((line) => line.name)).toEqual(["Luis", "Ana"]);
+    expect(entry.gross).toBe(28);
+  });
+
+  it("una visita sin detalle por paciente no trae líneas", () => {
+    const [entry] = buildLedgerEntries([visit({ id: "1", visit_date: "2026-07-01" })], centers);
+    expect(entry.patientLines).toEqual([]);
+  });
+});
+
+describe("waivedNotDiscountedOf", () => {
+  const lines = [
+    { id: "a", patient_id: "p1", price_charged: 14, payment_status: "Cobrado" },
+    { id: "b", patient_id: "p2", price_charged: 14, payment_status: "No cobra" },
+  ];
+
+  it("avisa de lo que se da por cobrado pese a estar marcado «no cobra»", () => {
+    // Una visita en estado `Cobrada` da por cobrado todo el bruto: los 14 € de
+    // «no cobra» no se han descontado y hay que poder decirlo.
+    expect(waivedNotDiscountedOf(lines, 0, false)).toBe(14);
+  });
+
+  it("no avisa cuando el reparto ya ha descontado ese importe", () => {
+    expect(waivedNotDiscountedOf(lines, 14, false)).toBe(0);
+    // Ni tampoco si se ha descontado de más: nunca devuelve un negativo.
+    expect(waivedNotDiscountedOf(lines, 20, false)).toBe(0);
+  });
+
+  it("no avisa en una cancelada ni cuando no hay ninguna línea condonada", () => {
+    expect(waivedNotDiscountedOf(lines, 0, true)).toBe(0);
+    expect(waivedNotDiscountedOf([{ id: "a", price_charged: 14, payment_status: "Cobrado" }], 0, false)).toBe(0);
+    expect(waivedNotDiscountedOf([], 0, false)).toBe(0);
+  });
+
+  it("lo cuelga de la entrada del libro sin mover ni un céntimo de los totales", () => {
+    const [entry] = buildLedgerEntries(
+      [visit({ id: "1", visit_date: "2026-07-01", status: "Cobrada", visit_patients: lines })],
+      centers,
+    );
+    expect(entry.gross).toBe(28);
+    // El criterio de siempre: una visita `Cobrada` cuenta entera como cobrada.
+    expect(entry.settled).toBe(28);
+    expect(entry.waived).toBe(0);
+    expect(entry.pending).toBe(0);
+    // Y el aviso, que es lo único nuevo.
+    expect(entry.waivedNotDiscounted).toBe(14);
+  });
+
+  it("una visita pendiente sí descuenta lo condonado y no necesita aviso", () => {
+    const [entry] = buildLedgerEntries(
+      [visit({ id: "1", visit_date: "2026-07-01", status: "Pendiente de cobro", visit_patients: lines })],
+      centers,
+    );
+    expect(entry.settled).toBe(14);
+    expect(entry.waived).toBe(14);
+    expect(entry.waivedNotDiscounted).toBe(0);
   });
 });

@@ -7,9 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Loader2, Save, Trash2 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ArrowLeft, ChevronDown, Loader2, ReceiptText, Save, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import type { TablesInsert } from "@/integrations/supabase/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { useInvalidateAll, useVisits } from "@/hooks/useData";
 import { PAYMENT_METHODS } from "@/types";
@@ -57,7 +60,13 @@ export default function NewCenter() {
   const [type, setType] = useState<string>("Residencia");
   const [contactPerson, setContactPerson] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  // Datos de facturación: hacen falta para emitir una factura de verdad, pero se
+  // rellenan una vez y se pliegan para no recargar el alta de un centro nuevo.
+  const [legalName, setLegalName] = useState("");
+  const [taxId, setTaxId] = useState("");
+  const [address, setAddress] = useState("");
   const [email, setEmail] = useState("");
+  const [billingOpen, setBillingOpen] = useState(false);
   const [usualSchedule, setUsualSchedule] = useState("");
   // Cadencia numérica (`visit_frequency_weeks`): es la que usa la app para
   // avisar de que toca llamar, y la que se pinta en la ficha del centro.
@@ -90,7 +99,17 @@ export default function NewCenter() {
       setType(data.type ?? "Residencia");
       setContactPerson(data.contact_person ?? "");
       setContactPhone(data.contact_phone ?? "");
-      setEmail((data as any).email ?? "");
+      const loadedLegalName = data.legal_name ?? "";
+      const loadedTaxId = data.tax_id ?? "";
+      const loadedAddress = data.address ?? "";
+      const loadedEmail = data.email ?? "";
+      setLegalName(loadedLegalName);
+      setTaxId(loadedTaxId);
+      setAddress(loadedAddress);
+      setEmail(loadedEmail);
+      // Si el centro ya tiene datos de facturación, el apartado se abre solo:
+      // esconder datos ya guardados haría creer que se han perdido.
+      setBillingOpen([loadedLegalName, loadedTaxId, loadedAddress, loadedEmail].some((value) => value.trim() !== ""));
       setUsualSchedule(data.usual_schedule ?? "");
       const loadedCadence = normalizeFrequencyWeeks(data.visit_frequency_weeks);
       if (loadedCadence === null) {
@@ -105,11 +124,11 @@ export default function NewCenter() {
       }
       setPrice(data.default_price_per_patient ?? "");
       setDefaultPayer(normalizeIncomeType(data.default_income_type) ?? ASK_PAYER);
-      const loadedPaymentMethod = (data as any).payment_method ?? "";
+      const loadedPaymentMethod = data.payment_method ?? "";
       setPaymentMethod(loadedPaymentMethod);
       setUseCustomPaymentMethod(loadedPaymentMethod !== "" && !(PAYMENT_METHODS as readonly string[]).includes(loadedPaymentMethod));
-      setBillingNotes((data as any).billing_notes ?? "");
-      setMaterialNotes((data as any).material_notes ?? "");
+      setBillingNotes(data.billing_notes ?? "");
+      setMaterialNotes(data.material_notes ?? "");
       setNotes(data.notes ?? "");
       setIsActive(data.is_active ?? true);
       setLoading(false);
@@ -126,6 +145,19 @@ export default function NewCenter() {
   // (al guardar sin rellenarlo salta el aviso emergente).
   const cadenceError = cadenceInvalid && customCadence.trim() !== "";
 
+  // Resumen del apartado plegado: con el apartado cerrado hay que poder ver de
+  // un vistazo si el centro está listo para facturar o qué le falta.
+  const billingSummary = useMemo(() => {
+    const filled = [
+      legalName.trim() && "razón social",
+      taxId.trim() && "NIF",
+      address.trim() && "dirección",
+      email.trim() && "email",
+    ].filter((label): label is string => !!label);
+    if (filled.length === 0) return "";
+    return `Guardado: ${filled.join(", ")}.`;
+  }, [legalName, taxId, address, email]);
+
   const defaultPayerType = normalizeIncomeType(defaultPayer);
   const payerHint = defaultPayerType
     ? `${INCOME_TYPE_HINT[defaultPayerType]}. Vendrá marcado, y podrás cambiarlo en cada visita.`
@@ -138,15 +170,25 @@ export default function NewCenter() {
       return toast.error(`Indica cada cuántas semanas visitas el centro (${MIN_FREQUENCY_WEEKS}–${MAX_FREQUENCY_WEEKS})`);
     }
     setBusy(true);
-    // Dirección, ciudad, código postal y la nota antigua de frecuencia ya no se
-    // piden aquí (David sólo quiere lo imprescindible), así que **no van en el
-    // payload**: lo que ya hubiera guardado se queda como está en la base.
-    const payload: any = {
+    // Ciudad, código postal y la nota antigua de frecuencia no se piden aquí: la
+    // dirección es un único campo libre, como en las facturas ya importadas
+    // («La Barganiza, s/n · 33429 Siero (Asturias)»). Al no ir en el payload, lo
+    // que hubiera guardado en esas columnas se queda como está en la base.
+    //
+    // Tipado con el esquema generado (antes era `any`): es la única red que
+    // avisa si un nombre de columna no existe o cambia de tipo, y aquí se
+    // guardan la razón social y el NIF que acaban impresos en una factura.
+    const payload: Omit<TablesInsert<"centers">, "user_id"> = {
       name: name.trim(),
       type,
       contact_person: contactPerson || null,
       contact_phone: contactPhone || null,
-      email: email || null,
+      // Datos de facturación: se normaliza con `trim()` porque un NIF o una
+      // razón social con espacios sueltos va a salir impresa en una factura.
+      legal_name: legalName.trim() || null,
+      tax_id: taxId.trim() || null,
+      address: address.trim() || null,
+      email: email.trim() || null,
       usual_schedule: usualSchedule.trim() || null,
       visit_frequency_weeks: cadenceWeeks,
       default_price_per_patient: price === "" ? null : price,
@@ -366,6 +408,105 @@ export default function NewCenter() {
         </CardContent>
       </Card>
 
+      {/* Datos de facturación: plegados por defecto para no deshacer la
+          simplicidad del formulario, pero abiertos solos si el centro ya los
+          tiene guardados. Sin ellos no se puede emitir una factura de verdad. */}
+      <Card>
+        <Collapsible open={billingOpen} onOpenChange={setBillingOpen}>
+          {/* El botón va dentro del `<h2>` (patrón de acordeón accesible): así el
+              apartado sigue apareciendo en el índice de encabezados de la
+              página, como los otros dos. Un `<h2>` dentro del botón no valdría:
+              un encabezado no puede vivir dentro de contenido interactivo. */}
+          <h2>
+            <CollapsibleTrigger className="flex w-full items-start gap-2 rounded-[inherit] p-4 text-left transition-smooth hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+              <ReceiptText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Datos de facturación
+                </span>
+                <span className="mt-0.5 block text-xs font-normal normal-case text-muted-foreground">
+                  {billingSummary || "Razón social, NIF, dirección y correo. Opcional, pero necesario para facturar."}
+                </span>
+              </span>
+              <ChevronDown
+                className={cn(
+                  "mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+                  billingOpen && "rotate-180",
+                )}
+                aria-hidden="true"
+              />
+            </CollapsibleTrigger>
+          </h2>
+          <CollapsibleContent>
+            <div className="space-y-4 border-t border-border p-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="legal-name">Razón social</Label>
+                <Input
+                  id="legal-name"
+                  value={legalName}
+                  onChange={(e) => setLegalName(e.target.value)}
+                  autoComplete="organization"
+                  aria-describedby="legal-name-help"
+                  placeholder="Ej.: YADINSA, S.A."
+                />
+                <p id="legal-name-help" className="text-xs text-muted-foreground">
+                  El nombre exacto para la factura, si es distinto del nombre habitual.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="tax-id">NIF/CIF</Label>
+                {/* Las mayúsculas se aplican al **valor**, no con CSS: con
+                    `class="uppercase"` el campo enseñaría «B33456789» pero se
+                    guardaría «b33456789», y eso acaba impreso en una factura. */}
+                <Input
+                  id="tax-id"
+                  value={taxId}
+                  onChange={(e) => setTaxId(e.target.value.toUpperCase())}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="Ej.: B33456789"
+                />
+              </div>
+
+              {/* Un único campo de texto libre, como en las facturas reales. */}
+              <div className="space-y-1.5">
+                <Label htmlFor="address">Dirección</Label>
+                <Textarea
+                  id="address"
+                  rows={2}
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  autoComplete="street-address"
+                  aria-describedby="address-help"
+                  placeholder="Ej.: La Barganiza, s/n · 33429 Siero (Asturias)"
+                />
+                <p id="address-help" className="text-xs text-muted-foreground">
+                  Calle, código postal y localidad en una sola línea, tal como quieres que salga en la factura.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  inputMode="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  aria-describedby="email-help"
+                  placeholder="Ej.: administracion@residencia.es"
+                />
+                <p id="email-help" className="text-xs text-muted-foreground">
+                  A dónde mandas la factura.
+                </p>
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </Card>
+
       {/* Resto de datos: se rellenan una vez y casi no se tocan. */}
       <Card>
         <CardContent className="space-y-4 p-4">
@@ -389,10 +530,6 @@ export default function NewCenter() {
               <Label htmlFor="phone">Teléfono</Label>
               <Input id="phone" type="tel" inputMode="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} autoComplete="tel" />
             </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="pm">Forma de cobro</Label>

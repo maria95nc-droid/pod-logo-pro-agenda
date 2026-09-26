@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import { buildCenterIndex } from "@/lib/centers";
 import { fromIsoDate } from "@/lib/format";
 import {
+  CONSERVATIVE_IRPF_RATE,
   DEFAULT_EMPRESA_IRPF,
+  RENTA_BUFFER_RATE,
   buildModelo130Reminders,
   cashInHand,
   centerPriceHistory,
@@ -138,6 +140,8 @@ describe("fiscalTotals", () => {
       retainedIrpf: 0,
       netDeclared: 0,
       conservativeNet: 0,
+      conservativeIrpf: 0,
+      rentaBuffer: 0,
       pendingModelo100: 0,
       unclassifiedVisits: 0,
       unclassifiedGross: 0,
@@ -300,6 +304,91 @@ describe("fiscalTotals", () => {
   it("normaliza una fecha con hora antes de comparar el rango", () => {
     const totals = fiscalTotals([visit({ visit_date: "2026-08-31T23:30:00", gross_amount: 100 })], monthRange("2026-08"));
     expect(totals.grossDeclared).toBe(100);
+  });
+});
+
+// ── Retenciones de referencia (20 % y 5 %) ───────────────────────────────────
+
+describe("retenciones de referencia", () => {
+  it("los tipos son los esperados: 15 % retenido, 20 % prudente, 5 % de colchón", () => {
+    expect(DEFAULT_EMPRESA_IRPF).toBe(15);
+    expect(CONSERVATIVE_IRPF_RATE).toBe(20);
+    // El 5 % no se escribe a mano: es la diferencia entre los otros dos.
+    expect(RENTA_BUFFER_RATE).toBe(5);
+  });
+
+  it("calcula el 20 % y el 5 % del bruto declarado total, no sólo del de entidades", () => {
+    const totals = fiscalTotals([
+      visit({ gross_amount: 1000 }),
+      visit({ income_type: "Particular", irpf_percentage: 0, gross_amount: 250 }),
+    ]);
+    expect(totals.grossDeclared).toBe(1250);
+    expect(totals.conservativeIrpf).toBe(250);
+    expect(totals.rentaBuffer).toBe(62.5);
+  });
+
+  it("el 20 % es exactamente el complementario del 80 %: las dos cifras suman el bruto", () => {
+    const totals = fiscalTotals([
+      visit({ gross_amount: 33.33 }),
+      visit({ gross_amount: 33.33 }),
+      visit({ gross_amount: 33.33 }),
+    ]);
+    expect(totals.grossDeclared).toBe(99.99);
+    expect(totals.conservativeNet).toBe(79.99);
+    expect(totals.conservativeIrpf).toBe(20);
+    expect(totals.conservativeNet + totals.conservativeIrpf).toBe(totals.grossDeclared);
+    expect(totals.rentaBuffer).toBe(5);
+  });
+
+  it("en pantalla cuadra: 20 % − ya retenido = falta por apartar", () => {
+    const totals = fiscalTotals([
+      visit({ gross_amount: 360 }),
+      visit({ gross_amount: 380 }),
+      visit({ gross_amount: 340 }),
+    ]);
+    expect(totals.conservativeIrpf).toBe(216);
+    expect(totals.retainedIrpf).toBe(162);
+    expect(totals.pendingModelo100).toBe(54);
+    expect(totals.conservativeIrpf - totals.retainedIrpf).toBe(totals.pendingModelo100);
+    // Con todo retenido al 15 %, el colchón del 5 % coincide con el pendiente
+    // real: es justo el caso que la etiqueta dice que está suponiendo.
+    expect(totals.rentaBuffer).toBe(totals.pendingModelo100);
+  });
+
+  it("el colchón del 5 % es sólo una referencia: con particulares se queda corto", () => {
+    // Todo de particulares: no hay retención ninguna, así que lo que falta de
+    // verdad es el 20 %, no el 5 %. La etiqueta avisa de que es aproximado.
+    const totals = fiscalTotals([visit({ income_type: "Particular", irpf_percentage: 0, gross_amount: 1000 })]);
+    expect(totals.rentaBuffer).toBe(50);
+    expect(totals.conservativeIrpf).toBe(200);
+    expect(totals.pendingModelo100).toBe(200);
+  });
+
+  it("no inventa cifras de referencia si no hay bruto declarado", () => {
+    const totals = fiscalTotals([visit({ income_type: null, gross_amount: 500 })]);
+    expect(totals.grossDeclared).toBe(0);
+    expect(totals.conservativeIrpf).toBe(0);
+    expect(totals.rentaBuffer).toBe(0);
+  });
+
+  it("redondea a céntimos exactos con importes que no son redondos", () => {
+    // 14,50 € × 2 = 29 €. 20 % = 5,80 €; 5 % = 1,45 €.
+    const totals = fiscalTotals([visit({ gross_amount: 14.5 }), visit({ gross_amount: 14.5 })]);
+    expect(totals.grossDeclared).toBe(29);
+    expect(totals.conservativeIrpf).toBe(5.8);
+    expect(totals.rentaBuffer).toBe(1.45);
+
+    // 0,01 € es el caso límite: el 5 % es medio céntimo y no puede quedar en NaN.
+    const cent = fiscalTotals([visit({ gross_amount: 0.01 })]);
+    expect(cent.grossDeclared).toBe(0.01);
+    expect(cent.conservativeIrpf).toBe(0);
+    expect(cent.rentaBuffer).toBe(0);
+  });
+
+  it("las cifras de referencia no se dejan tocar por una visita sin clasificar", () => {
+    const totals = fiscalTotals([visit({ gross_amount: 1000 }), visit({ income_type: null, gross_amount: 1000 })]);
+    expect(totals.conservativeIrpf).toBe(200);
+    expect(totals.rentaBuffer).toBe(50);
   });
 });
 

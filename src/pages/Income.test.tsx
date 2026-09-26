@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { formatEUR } from "@/lib/format";
 
@@ -47,6 +47,13 @@ const visits = [
     ],
   },
 ];
+
+/**
+ * `formatEUR` separa el importe del € con un espacio duro, y Testing Library
+ * normaliza los espacios del DOM antes de comparar: para buscar por texto hay
+ * que normalizarlo también aquí (con `textContent` sí vale el original).
+ */
+const eur = (value: number) => formatEUR(value).replace(/\u00A0/g, " ");
 
 const centers = [
   { id: "c-riano", name: "CPR Riaño", type: "Centro de día", city: "Langreo", payment_method: "A través de empresa gestora (Eulen)" },
@@ -101,6 +108,61 @@ describe("Detalle de ingresos", () => {
   it("explica que el mes está vacío por culpa del filtro de estado", () => {
     renderAt("?mes=2026-08&estado=pending");
     expect(screen.getByText(/Sin movimientos en agosto 2026 con el filtro/)).toBeInTheDocument();
+  });
+
+  it("el detalle de cada fila empieza plegado", () => {
+    renderAt();
+    expect(screen.queryByText("Cómo se cobró")).not.toBeInTheDocument();
+    expect(screen.queryByText("Notas")).not.toBeInTheDocument();
+    const triggers = screen.getAllByRole("button", { name: /el detalle de/ });
+    expect(triggers).toHaveLength(2);
+    for (const trigger of triggers) expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("despliega el detalle del día de la residencia sin salir de la pantalla", () => {
+    renderAt();
+    const trigger = screen.getByRole("button", {
+      name: "Ver el detalle de Residencia Santa Bárbara del 28/07/2026",
+    });
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    // El panel es el que controla el botón: se busca dentro de él, no en toda
+    // la pantalla, para no confundirlo con el resumen de la fila.
+    const panel = document.getElementById(trigger.getAttribute("aria-controls")!)!;
+    // El registro rápido guarda una sola fila agregada: se enseña como el cobro
+    // de la visita, no como si «7 pacientes» fuese el nombre de una persona.
+    expect(within(panel).getByText("Cobro de la visita")).toBeInTheDocument();
+    expect(within(panel).getByText("7 pacientes")).toBeInTheDocument();
+    expect(within(panel).queryByText("Pacientes")).not.toBeInTheDocument();
+
+    // Desglose de formas de pago, método a método y con su importe.
+    expect(within(panel).getByText("Cómo se cobró")).toBeInTheDocument();
+    expect(within(panel).getByText("Efectivo")).toBeInTheDocument();
+    expect(within(panel).getByText(eur(55))).toBeInTheDocument();
+    expect(within(panel).getByText("Bizum")).toBeInTheDocument();
+    expect(within(panel).getByText(eur(50))).toBeInTheDocument();
+
+    // Bruto y cobrado del movimiento, que es la pregunta de esta pantalla.
+    const figures = Array.from(panel.querySelectorAll("dl > div")).map((row) => [
+      row.querySelector("dt")?.textContent,
+      row.querySelector("dd")?.textContent,
+    ]);
+    expect(figures).toContainEqual(["Bruto", formatEUR(105)]);
+    expect(figures).toContainEqual(["Cobrado", formatEUR(105)]);
+
+    // Y se puede volver a plegar.
+    fireEvent.click(screen.getByRole("button", { name: /Ocultar el detalle de Residencia Santa Bárbara/ }));
+    expect(screen.queryByText("Cómo se cobró")).not.toBeInTheDocument();
+  });
+
+  it("en el detalle de una visita sin cobro explica de dónde sale la forma de pago y enseña la nota", () => {
+    renderAt();
+    fireEvent.click(screen.getByRole("button", { name: /Ver el detalle de CPR Riaño/ }));
+    expect(screen.getByText("Notas")).toBeInTheDocument();
+    expect(
+      screen.getByText(/No hay desglose guardado de este cobro\. La forma de cobro habitual de CPR Riaño es/),
+    ).toBeInTheDocument();
   });
 
   it("resume bruto, cobrado, pendiente y pacientes del conjunto filtrado", () => {

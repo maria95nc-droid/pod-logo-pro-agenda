@@ -87,6 +87,39 @@ export interface LedgerEntry {
   incomeType: IncomeType | null;
   /** Número de factura apuntado, si lo hay. */
   invoiceNumber: string | null;
+  /** Una línea por fila de `visit_patients`, para el desplegable de la fila. */
+  patientLines: LedgerPatientLine[];
+  /**
+   * Importe marcado «No cobra` en las líneas que **sí** cuenta `settled`.
+   *
+   * Una visita en estado `Cobrada` da por cobrado todo su bruto (ver
+   * `splitAmountsOf`), aunque alguna línea diga «No cobra». El total no se toca
+   * —es el criterio con el que están hechas las cifras que el dueño ya da por
+   * buenas— pero el desplegable enseña las dos cosas a la vez, y una
+   * contradicción sin explicar destruye la confianza en la pantalla. Aquí se
+   * deja el dato para poder avisar. 0 cuando no hay nada raro.
+   */
+  waivedNotDiscounted: number;
+}
+
+/** Una fila de `visit_patients` tal como se enseña en el desplegable. */
+export interface LedgerPatientLine {
+  /** Clave estable para React (el id de la fila, o su posición si no lo hay). */
+  key: string;
+  /** Nombre del paciente, o el texto de la fila agregada («6 pacientes»). */
+  name: string;
+  amount: number;
+  /** Estado de cobro apuntado en esa línea, o `null` si no hay ninguno. */
+  status: string | null;
+  /**
+   * `true` si es la fila agregada de un registro rápido y no un paciente real.
+   * La pantalla lo necesita para no dar «6 pacientes» por nombre de persona.
+   */
+  aggregate: boolean;
+  /** `false` si la visita quedó apuntada como no atendida. */
+  attended: boolean;
+  /** Formas de pago concretas de esa línea, si se partió el cobro. */
+  payments: PaymentLine[];
 }
 
 /** Estados de visita que ya se dan por cobrados o facturados. */
@@ -189,6 +222,50 @@ export function patientsOf(visit: LedgerVisit, vps: readonly LedgerVisitPatient[
   return vps.filter((vp) => !isAggregateVisitPatient(vp) && vp.attended !== false).length;
 }
 
+/**
+ * Filas de `visit_patients` para el desplegable, **en el orden en que llegan**
+ * (es el orden de la visita, no uno alfabético inventado).
+ *
+ * La fila agregada de un registro rápido se incluye pero se marca como tal: es
+ * la que lleva el estado de cobro y el desglose de un registro rápido, así que
+ * esconderla dejaría el desplegable vacío justo en las visitas de residencia,
+ * que son las que el dueño quería poder desplegar.
+ */
+export function patientLinesOf(vps: readonly LedgerVisitPatient[]): LedgerPatientLine[] {
+  return vps.map((vp, index) => {
+    const aggregate = isAggregateVisitPatient(vp);
+    const name = clean(vp?.patient_name);
+    return {
+      key: clean(vp?.id) ?? `vp-${index}`,
+      // Sin nombre guardado no se inventa ninguno: «Paciente 1» es más honesto
+      // que repetir el nombre del centro o dejar la línea en blanco.
+      name: name ?? (aggregate ? "Pacientes de la visita" : `Paciente ${index + 1}`),
+      amount: roundCents(toAmount(vp?.price_charged)),
+      status: clean(vp?.payment_status),
+      aggregate,
+      attended: vp?.attended !== false,
+      payments: parsePaymentBreakdown(vp?.payment_breakdown) ?? [],
+    };
+  });
+}
+
+/**
+ * Importe de las líneas «No cobra» que el reparto de la visita **no** ha sacado
+ * de lo cobrado. Es sólo un aviso para la pantalla: no cambia ningún total.
+ */
+export function waivedNotDiscountedOf(
+  vps: readonly LedgerVisitPatient[],
+  waived: number,
+  cancelled: boolean,
+): number {
+  if (cancelled) return 0;
+  let inLines = 0;
+  for (const vp of vps) {
+    if (vp?.payment_status === WAIVED_PAYMENT_STATUS) inLines += Math.max(0, toAmount(vp.price_charged));
+  }
+  return Math.max(0, roundCents(roundCents(inLines) - roundCents(waived)));
+}
+
 /** Construye el libro de movimientos, del más reciente al más antiguo. */
 export function buildLedgerEntries(
   visits: readonly LedgerVisit[],
@@ -234,6 +311,8 @@ export function buildLedgerEntries(
       note: clean(visit.general_notes),
       incomeType: normalizeIncomeType(visit.income_type),
       invoiceNumber: clean(visit.invoice_number),
+      patientLines: patientLinesOf(vps),
+      waivedNotDiscounted: waivedNotDiscountedOf(vps, waived, cancelled),
     });
   }
 

@@ -7,10 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/StatusBadge";
 import { StreakBadge } from "@/components/StreakBadge";
+import { RevenueRecordsCard } from "@/components/RevenueRecordsCard";
 import { CenterLabel } from "@/components/CenterLabel";
 import { VisitAmount } from "@/components/VisitAmount";
 import { CollectPaymentSheet } from "@/components/payments/CollectPaymentSheet";
 import { calculateStreak, isCompletedVisit } from "@/lib/streak";
+import { revenueProgress, revenueRecords, type RevenueVisit } from "@/lib/revenueRecords";
 import { formatEUR, formatDate, fromIsoDate, toIsoDate } from "@/lib/format";
 import type { VisitStatus } from "@/types";
 import { monthLabel } from "@/lib/calendar";
@@ -212,6 +214,23 @@ export default function Finance() {
   const streak = useMemo(() => calculateStreak(visits), [visits]);
   const monthProgress = calc.monthVisits.length > 0 ? Math.round((calc.done / calc.monthVisits.length) * 100) : 0;
 
+  // ── Récords de facturación ─────────────────────────────────────────────────
+  // A propósito **no** dependen de `selectedMonth`: son de todo el histórico y
+  // se comparan siempre con hoy y con el mes en curso. La tarjeta lo dice.
+  //
+  // `todayIso` se calcula en cada render (como `currentMonth`) y entra en las
+  // dependencias: dentro del `useMemo` se quedaría congelado y, con la app
+  // abierta al pasar la medianoche, «hoy» seguiría siendo ayer.
+  const todayIso = toIsoDate();
+  const records = useMemo(() => {
+    const rows = visits as unknown as RevenueVisit[];
+    return {
+      all: revenueRecords(rows),
+      day: revenueProgress(rows, todayIso),
+      month: revenueProgress(rows, monthKey(todayIso)),
+    };
+  }, [visits, todayIso]);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -292,6 +311,8 @@ export default function Finance() {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-2">
+          <RevenueRecordsCard records={records.all} day={records.day} month={records.month} />
+
           <Card>
             <CardContent className="space-y-2 p-4 text-sm">
               <Row label={`IRPF estimado (${calc.irpfPct}%)`} value={`- ${formatEUR(calc.irpf)}`} />

@@ -53,6 +53,14 @@ export const DEFAULT_EMPRESA_IRPF = 15;
 /** Estimación conservadora: se guarda el 20 % de todo el bruto declarado. */
 export const CONSERVATIVE_IRPF_RATE = 20;
 
+/**
+ * Colchón que conviene apartar **además** de lo que ya retienen: la diferencia
+ * entre el 20 % prudente y el 15 % que retiene una entidad. No se escribe un 5
+ * a mano para que siga siendo la diferencia real si alguno de los dos tipos
+ * cambia.
+ */
+export const RENTA_BUFFER_RATE = CONSERVATIVE_IRPF_RATE - DEFAULT_EMPRESA_IRPF;
+
 /** Umbrales del Modelo 130, en puntos porcentuales de ingresos sin retención. */
 export const MODELO_130_WATCH_PERCENT = 25;
 export const MODELO_130_LIMIT_PERCENT = 30;
@@ -260,6 +268,23 @@ export interface FiscalTotals {
   /** Cálculo 2 — estimación conservadora: el 80 % del bruto declarado. */
   conservativeNet: number;
   /**
+   * Cifra de referencia — cuánto sería ese 20 % en euros.
+   *
+   * Se obtiene **restando** (`grossDeclared − conservativeNet`), no aplicando
+   * otra vez el porcentaje: así las dos cifras de la pantalla suman siempre
+   * exactamente el bruto declarado y no pueden desviarse ni un céntimo.
+   */
+  conservativeIrpf: number;
+  /**
+   * Cifra de referencia — colchón del 5 % (`RENTA_BUFFER_RATE`) sobre todo el
+   * bruto declarado: lo que conviene guardar aparte para la declaración de la
+   * renta, por encima del 15 % que ya retienen las entidades.
+   *
+   * Es una **aproximación** deliberada: supone que todo el bruto viene retenido
+   * al 15 %. La cifra exacta con las retenciones reales es `pendingModelo100`.
+   */
+  rentaBuffer: number;
+  /**
    * Cálculo 3 — lo que falta apartar para el Modelo 100 (la declaración anual).
    * Puede salir **negativo** si ya le han retenido más del 20 %: se muestra con
    * su signo, porque significa que tiene dinero a favor, no cero.
@@ -280,6 +305,8 @@ export const EMPTY_FISCAL_TOTALS: Readonly<FiscalTotals> = Object.freeze({
   retainedIrpf: 0,
   netDeclared: 0,
   conservativeNet: 0,
+  conservativeIrpf: 0,
+  rentaBuffer: 0,
   pendingModelo100: 0,
   unclassifiedVisits: 0,
   unclassifiedGross: 0,
@@ -330,6 +357,13 @@ export function fiscalTotals(visits: readonly FiscalVisit[], range?: DateRange):
   retainedIrpf = roundCents(retainedIrpf);
   const grossDeclared = roundCents(grossEmpresa + grossParticular);
 
+  const conservativeNet = roundCents((grossDeclared * (100 - CONSERVATIVE_IRPF_RATE)) / 100);
+  // El 20 % en euros sale de restar, no de volver a aplicar el porcentaje: las
+  // dos cifras se enseñan juntas y David las va a sumar mentalmente, así que
+  // tienen que cuadrar con el bruto declarado al céntimo. De aquí sale también
+  // «falta por apartar», para que en pantalla 20 % − retenido = pendiente.
+  const conservativeIrpf = roundCents(grossDeclared - conservativeNet);
+
   return {
     visits: counted,
     grossEmpresa,
@@ -337,8 +371,10 @@ export function fiscalTotals(visits: readonly FiscalVisit[], range?: DateRange):
     grossDeclared,
     retainedIrpf,
     netDeclared: roundCents(grossDeclared - retainedIrpf),
-    conservativeNet: roundCents((grossDeclared * (100 - CONSERVATIVE_IRPF_RATE)) / 100),
-    pendingModelo100: roundCents((grossDeclared * CONSERVATIVE_IRPF_RATE) / 100 - retainedIrpf),
+    conservativeNet,
+    conservativeIrpf,
+    rentaBuffer: roundCents((grossDeclared * RENTA_BUFFER_RATE) / 100),
+    pendingModelo100: roundCents(conservativeIrpf - retainedIrpf),
     unclassifiedVisits,
     unclassifiedGross: roundCents(unclassifiedGross),
     oddRetentionVisits,

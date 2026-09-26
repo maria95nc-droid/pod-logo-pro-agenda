@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { formatEUR } from "@/lib/format";
 
@@ -104,8 +104,41 @@ describe("Finanzas · pestaña de impuestos", () => {
     expect(screen.getByText("Neto declarado")).toBeInTheDocument();
     expect(screen.getByText(eur(1050))).toBeInTheDocument(); // neto declarado
     expect(screen.getByText(eur(960))).toBeInTheDocument(); // estimación prudente
-    expect(screen.getByText("Falta por apartar (Modelo 100)")).toBeInTheDocument();
-    expect(screen.getByText(eur(90))).toBeInTheDocument(); // 20 % − retenido
+    // Los 90 € salen dos veces (la cifra y el aviso del 5 %): se lee el `dd`
+    // que acompaña a esta etiqueta, no el primer texto que coincida.
+    const label = screen.getByText("Falta por apartar (Modelo 100)");
+    expect(label.parentElement?.querySelector("dd")?.textContent).toBe(formatEUR(90));
+  });
+
+  it("enseña el 15 %, el 20 % y el 5 % uno al lado del otro, y cuadran entre sí", () => {
+    renderFiscalTab();
+    // Ojo: el nombre accesible de un encabezado **no** normaliza el espacio
+    // duro (al contrario que `getByText`), así que aquí va `formatEUR` tal cual.
+    const block = screen.getByRole("heading", { name: `Retenciones sobre ${formatEUR(1200)} de bruto` }).closest("section")!;
+    const pairs = Array.from(block.querySelectorAll("dl > div")).map((row) => [
+      row.querySelector("dt")?.textContent,
+      row.querySelector("dd")?.textContent,
+    ]);
+    // 1.200 € declarados: 150 € ya retenidos al 15 %, 240 € si fuese el 20 %,
+    // 60 € de colchón del 5 %. Y 240 − 150 = 90 €, la cifra de «falta por
+    // apartar» de arriba: las tres se leen juntas y tienen que cuadrar.
+    expect(pairs).toEqual([
+      // «Ya retenido» sin «(15 %)»: es la retención real y hay facturas al 7 %.
+      ["Ya retenido", formatEUR(150)],
+      ["Si fuera el 20 %", formatEUR(240)],
+      ["Aparta el 5 %", formatEUR(60)],
+    ]);
+  });
+
+  it("avisa de que el 5 % se queda corto cuando hay ingresos sin retención", () => {
+    renderFiscalTab();
+    // 1.200 € de bruto con sólo 150 € retenidos (200 € los paga un particular,
+    // sin retención): el colchón del 5 % son 60 €, pero faltan 90 € de verdad.
+    // Sin este aviso, apartar 60 € dejaría a David 30 € corto con Hacienda.
+    const warning = screen.getByText(/se queda corto/);
+    expect(warning).toHaveTextContent("Este periodo el 5 % se queda corto.");
+    expect(warning.parentElement).toHaveTextContent("parte la cobras de particulares, sin retención");
+    expect(warning.parentElement).toHaveTextContent(eur(90));
   });
 
   it("deja la visita sin clasificar fuera de las cuentas y la pone a la vista", () => {
@@ -141,5 +174,23 @@ describe("Finanzas · pestaña de impuestos", () => {
     expect(screen.getByText("Domicilios en agosto 2026 (neto)")).toBeInTheDocument();
     expect(screen.getByText(/1 visita · 10 pac\. · bruto/)).toBeInTheDocument();
     expect(screen.getByText("Cobrado en efectivo en agosto 2026")).toBeInTheDocument();
+  });
+});
+
+describe("Finanzas · récords de facturación", () => {
+  it("los calcula sobre todo el histórico, incluidas las visitas sin clasificar", () => {
+    render(
+      <MemoryRouter initialEntries={["/finanzas"]}>
+        <Finance />
+      </MemoryRouter>,
+    );
+    // Los récords son de dinero cobrado, no de dinero declarado: las tres
+    // visitas de agosto cuentan, también la que falta por clasificar.
+    const amountOf = (label: string): string | undefined =>
+      screen.getByText(label).parentElement?.querySelector("p + p")?.textContent ?? undefined;
+    expect(amountOf("Mejor día")).toBe(formatEUR(1000));
+    expect(amountOf("Mejor mes")).toBe(formatEUR(1500));
+    const month = screen.getByText("Mejor mes").closest("li")!;
+    expect(within(month).getByText("Agosto 2026 · 3 visitas")).toBeInTheDocument();
   });
 });

@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Caché incremental de `npm run typecheck` (tsc -b)
+*.tsbuildinfo
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

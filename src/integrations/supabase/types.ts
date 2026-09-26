@@ -27,11 +27,13 @@ export type Database = {
           email: string | null
           id: string
           is_active: boolean
+          legal_name: string | null
           material_notes: string | null
           name: string
           notes: string | null
           payment_method: string | null
           postal_code: string | null
+          tax_id: string | null
           type: string
           updated_at: string
           user_id: string
@@ -51,11 +53,13 @@ export type Database = {
           email?: string | null
           id?: string
           is_active?: boolean
+          legal_name?: string | null
           material_notes?: string | null
           name: string
           notes?: string | null
           payment_method?: string | null
           postal_code?: string | null
+          tax_id?: string | null
           type?: string
           updated_at?: string
           user_id: string
@@ -75,11 +79,13 @@ export type Database = {
           email?: string | null
           id?: string
           is_active?: boolean
+          legal_name?: string | null
           material_notes?: string | null
           name?: string
           notes?: string | null
           payment_method?: string | null
           postal_code?: string | null
+          tax_id?: string | null
           type?: string
           updated_at?: string
           user_id?: string
